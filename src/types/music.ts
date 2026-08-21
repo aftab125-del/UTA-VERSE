@@ -21,4 +21,5 @@ export interface Artist {
   name: string;
   artwork: string;
   genre: string;
+  bio?: string;
 }
