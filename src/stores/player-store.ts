@@ -10,6 +10,7 @@ type PlayerState = {
   queueIndex: number;
   isPlaying: boolean;
   isLoading: boolean;
+  isResolving: boolean;
   position: number;
   duration: number;
   buffered: number;
@@ -18,7 +19,7 @@ type PlayerState = {
   repeatMode: RepeatMode;
   isShuffled: boolean;
   error: string | null;
-  setTrack: (track: Track, queue?: Track[]) => void;
+  setTrack: (track: Track, queue?: Track[]) => Promise<void>;
   togglePlayPause: () => Promise<void>;
   pause: () => void;
   seek: (position: number) => void;
@@ -31,10 +32,36 @@ type PlayerState = {
 };
 
 let audioEngine: AudioEngine | null = null;
+let playbackRequestId = 0;
+const resolvedSourceCache = new Map<string, string>();
 
 function getAudioEngine() {
   if (!audioEngine) audioEngine = new AudioEngine();
   return audioEngine;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function resolveTrackSource(track: Track): Promise<string> {
+  const cachedSource = resolvedSourceCache.get(track.id);
+  if (cachedSource) return cachedSource;
+  const response = await fetch("/api/playback/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: track.title, artist: track.artist }),
+  });
+  const data = (await response.json()) as { sourceUrl?: unknown; error?: unknown };
+  if (!response.ok || typeof data.sourceUrl !== "string" || !data.sourceUrl) {
+    throw new Error(typeof data.error === "string" ? data.error : "The playback source could not be resolved.");
+  }
+  resolvedSourceCache.set(track.id, data.sourceUrl);
+  return data.sourceUrl;
+}
+
+function isCurrentRequest(requestId: number, track: Track, get: () => PlayerState) {
+  return requestId === playbackRequestId && get().currentTrack?.id === track.id;
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -43,6 +70,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   queueIndex: -1,
   isPlaying: false,
   isLoading: false,
+  isResolving: false,
   position: 0,
   duration: 0,
   buffered: 0,
@@ -52,70 +80,70 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isShuffled: false,
   error: null,
 
-  setTrack: (track, queue = [track]) => {
+  setTrack: async (track, queue = [track]) => {
+    const requestId = ++playbackRequestId;
     const queueIndex = Math.max(0, queue.findIndex((item) => item.id === track.id));
-    set({ currentTrack: track, queue, queueIndex, position: 0, duration: track.duration, isPlaying: false, isLoading: false, error: null });
+    audioEngine?.clear();
+    set({ currentTrack: track, queue, queueIndex, position: 0, duration: track.duration, buffered: 0, isPlaying: false, isLoading: true, isResolving: !track.audioUrl, error: null });
 
-    if (typeof window === "undefined" || !track.audioUrl) return;
+    try {
+      const sourceUrl = track.audioUrl ?? await resolveTrackSource(track);
+      if (!isCurrentRequest(requestId, track, get)) return;
 
-    const engine = getAudioEngine();
-    engine.load(track.audioUrl, {
-      onLoading: () => set({ isLoading: true, error: null }),
-      onReady: (duration) => set({ duration, isLoading: false }),
-      onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
-      onPlaying: () => set({ isPlaying: true, isLoading: false }),
-      onPaused: () => set({ isPlaying: false }),
-      onEnded: () => get().next(),
-      onError: (message) => set({ error: message, isPlaying: false, isLoading: false }),
-    });
-    engine.setVolume(get().isMuted ? 0 : get().volume);
+      const engine = getAudioEngine();
+      engine.load(sourceUrl, {
+        onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
+        onReady: (duration) => set({ duration, isLoading: false, isResolving: false }),
+        onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
+        onPlaying: () => set({ isPlaying: true, isLoading: false, isResolving: false, error: null }),
+        onPaused: () => set({ isPlaying: false }),
+        onEnded: () => get().next(),
+        onError: (message) => set({ error: message, isPlaying: false, isLoading: false, isResolving: false }),
+      });
+      engine.setVolume(get().isMuted ? 0 : get().volume);
+      set({ isResolving: false });
+      await engine.play();
+    } catch (error) {
+      if (!isCurrentRequest(requestId, track, get)) return;
+      const message = getErrorMessage(error, "Playback could not start.");
+      console.error("[PlayerStore] Track resolution or playback failed", { trackId: track.id, message });
+      audioEngine?.clear();
+      set({ error: message, isPlaying: false, isLoading: false, isResolving: false });
+    }
   },
 
   togglePlayPause: async () => {
     const track = get().currentTrack;
-    if (!track?.audioUrl) {
-      set({ error: "This preview is waiting for a catalog audio source." });
+    if (!track || get().isResolving || get().isLoading) return;
+    if (get().isPlaying) {
+      audioEngine?.pause();
       return;
     }
-
-    const engine = getAudioEngine();
-    if (get().isPlaying) {
-      engine.pause();
-    } else {
-      try {
-        await engine.play();
-      } catch {
-        set({ error: "Playback could not start. Check the browser audio permission." });
-      }
-    }
+    await get().setTrack(track, get().queue.length ? get().queue : [track]);
   },
 
-  pause: () => getAudioEngine().pause(),
-  seek: (position) => getAudioEngine().seek(position),
+  pause: () => { if (!get().isResolving) audioEngine?.pause(); },
+  seek: (position) => { if (!get().isResolving && !get().isLoading && get().duration > 0) audioEngine?.seek(position); },
   setVolume: (volume) => {
     const nextVolume = Math.min(1, Math.max(0, volume));
     set({ volume: nextVolume, isMuted: nextVolume === 0 });
-    if (typeof window !== "undefined") getAudioEngine().setVolume(nextVolume);
+    audioEngine?.setVolume(nextVolume);
   },
   toggleMute: () => {
     const muted = !get().isMuted;
     set({ isMuted: muted });
-    if (typeof window !== "undefined") getAudioEngine().setVolume(muted ? 0 : get().volume);
+    audioEngine?.setVolume(muted ? 0 : get().volume);
   },
   next: () => {
     const { queue, queueIndex, repeatMode } = get();
     if (!queue.length) return;
     const nextIndex = queueIndex + 1 >= queue.length ? (repeatMode === "all" ? 0 : -1) : queueIndex + 1;
-    if (nextIndex === -1) {
-      getAudioEngine().pause();
-      set({ isPlaying: false });
-      return;
-    }
-    get().setTrack(queue[nextIndex], queue);
+    if (nextIndex === -1) { audioEngine?.pause(); set({ isPlaying: false }); return; }
+    void get().setTrack(queue[nextIndex], queue);
   },
   previous: () => {
     const { queue, queueIndex } = get();
-    if (queue.length && queueIndex > 0) get().setTrack(queue[queueIndex - 1], queue);
+    if (queue.length && queueIndex > 0) void get().setTrack(queue[queueIndex - 1], queue);
   },
   setRepeatMode: (repeatMode) => set({ repeatMode }),
   setShuffled: (isShuffled) => set({ isShuffled }),

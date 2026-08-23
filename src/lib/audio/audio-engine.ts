@@ -12,6 +12,7 @@ export interface AudioEngineCallbacks {
 export class AudioEngine {
   private readonly element: HTMLAudioElement;
   private cleanupListeners: (() => void) | null = null;
+  private hasSource = false;
 
   constructor() {
     if (typeof window === "undefined") throw new Error("AudioEngine requires a browser");
@@ -20,10 +21,12 @@ export class AudioEngine {
   }
 
   load(source: string, callbacks: AudioEngineCallbacks = {}) {
+    if (!source) throw new Error("An audio source is required.");
     this.cleanupListeners?.();
     this.element.pause();
     this.element.src = source;
     this.element.load();
+    this.hasSource = true;
     callbacks.onLoading?.();
 
     const onLoadedMetadata = () => callbacks.onReady?.(this.element.duration || 0);
@@ -32,7 +35,14 @@ export class AudioEngine {
     const onPlaying = () => callbacks.onPlaying?.();
     const onPause = () => callbacks.onPaused?.();
     const onEnded = () => callbacks.onEnded?.();
-    const onError = () => callbacks.onError?.("The audio source could not be loaded.");
+    const onError = () => {
+      console.error("[AudioEngine] Audio element failed to load the source", {
+        code: this.element.error?.code ?? null,
+        networkState: this.element.networkState,
+        readyState: this.element.readyState,
+      });
+      callbacks.onError?.("The resolved audio source could not be loaded by the browser.");
+    };
 
     this.element.addEventListener("loadedmetadata", onLoadedMetadata);
     this.element.addEventListener("timeupdate", onTimeUpdate);
@@ -53,17 +63,32 @@ export class AudioEngine {
     };
   }
 
-  async play() { await this.element.play(); }
-  pause() { this.element.pause(); }
-  seek(position: number) { this.element.currentTime = Math.max(0, position); }
+  async play() {
+    if (!this.hasSource) throw new Error("No audio source is loaded.");
+    await this.element.play();
+  }
+
+  pause() {
+    if (this.hasSource) this.element.pause();
+  }
+
+  seek(position: number) {
+    if (this.hasSource && Number.isFinite(position)) this.element.currentTime = Math.max(0, position);
+  }
+
   setVolume(volume: number) { this.element.volume = Math.min(1, Math.max(0, volume)); }
 
-  dispose() {
+  clear() {
     this.cleanupListeners?.();
     this.cleanupListeners = null;
     this.element.pause();
     this.element.removeAttribute("src");
     this.element.load();
+    this.hasSource = false;
+  }
+
+  dispose() {
+    this.clear();
   }
 
   private getBufferedTime() {

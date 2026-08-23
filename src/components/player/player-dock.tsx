@@ -17,6 +17,9 @@ export function PlayerDock() {
   const seek = usePlayerStore((state) => state.seek);
   const setVolume = usePlayerStore((state) => state.setVolume);
   const toggleMute = usePlayerStore((state) => state.toggleMute);
+  const error = usePlayerStore((state) => state.error);
+  const isLoading = usePlayerStore((state) => state.isLoading);
+  const isResolving = usePlayerStore((state) => state.isResolving);
 
   const hasTrack = Boolean(currentTrack);
 
@@ -26,21 +29,21 @@ export function PlayerDock() {
         {currentTrack ? <ArtworkTile artwork={currentTrack.artwork} title={currentTrack.title} size="small" /> : <div className="player-dock__empty-art" aria-hidden="true" />}
         <div className="player-dock__metadata">
           <strong>{currentTrack?.title ?? "Choose something to play"}</strong>
-          <span>{currentTrack?.artist ?? "Your player is ready"}</span>
+          <span className={error ? "player-dock__error" : undefined}>{error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Your player is ready")}</span>
         </div>
       </div>
 
       <div className="player-dock__transport">
         <div className="player-dock__buttons">
           <button type="button" className="icon-button" onClick={previous} disabled={!hasTrack} aria-label="Previous track">◀◀</button>
-          <button type="button" className="player-dock__play-button" onClick={() => void togglePlayPause()} disabled={!hasTrack} aria-label={isPlaying ? "Pause" : "Play"}>
+          <button type="button" className="player-dock__play-button" onClick={() => void togglePlayPause()} disabled={!hasTrack || isResolving || isLoading} aria-label={isPlaying ? "Pause" : "Play"}>
             {isPlaying ? "Ⅱ" : "▶"}
           </button>
           <button type="button" className="icon-button" onClick={next} disabled={!hasTrack} aria-label="Next track">▶▶</button>
         </div>
         <div className="player-dock__progress-row">
           <span>{formatTime(position)}</span>
-          <input type="range" min="0" max={duration || 1} value={Math.min(position, duration || 1)} onChange={(event) => seek(Number(event.target.value))} disabled={!hasTrack} aria-label="Track progress" />
+          <input type="range" min="0" max={duration || 1} value={Math.min(position, duration || 1)} onChange={(event) => seek(Number(event.target.value))} disabled={!hasTrack || isResolving || isLoading || duration <= 0} aria-label="Track progress" />
           <span>{formatTime(duration)}</span>
         </div>
       </div>
