@@ -1,6 +1,8 @@
 FROM node:22-slim
 
-# Install system dependencies
+# ---------------------------------------------------------
+# System dependencies
+# ---------------------------------------------------------
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -10,16 +12,23 @@ RUN apt-get update && apt-get install -y \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install latest yt-dlp + EJS challenge solver
+# ---------------------------------------------------------
+# Install yt-dlp
+# ---------------------------------------------------------
 RUN pip3 install --no-cache-dir -U "yt-dlp[default]" --break-system-packages
 
-# Install Deno for YouTube JavaScript challenge solving
+# ---------------------------------------------------------
+# Install Deno
+# Required by yt-dlp for YouTube JavaScript challenges
+# ---------------------------------------------------------
 RUN curl -fsSL https://deno.land/install.sh | sh
 
-ENV DENO_INSTALL="/root/.deno"
+ENV DENO_INSTALL=/root/.deno
 ENV PATH="${DENO_INSTALL}/bin:${PATH}"
 
-# Fail the image build if a required runtime tool is missing.
+# ---------------------------------------------------------
+# Verify runtime dependencies during image build
+# ---------------------------------------------------------
 RUN set -eux; \
     node --version; \
     python3 --version; \
@@ -27,16 +36,21 @@ RUN set -eux; \
     ffmpeg -version | sed -n '1p'; \
     deno --version | sed -n '1p'
 
+# ---------------------------------------------------------
+# Application
+# ---------------------------------------------------------
 WORKDIR /app
 
-# Install Node dependencies
+# Install Node dependencies first for Docker layer caching
 COPY package*.json ./
 RUN npm install --omit=dev
 
-# Copy server
+# Copy the server
 COPY index.js ./
 
-# Render provides PORT dynamically
+# Northflank/Render supplies PORT at runtime.
+# 3000 is the fallback defined in index.js.
 EXPOSE 3000
 
+# Start server
 CMD ["node", "index.js"]
