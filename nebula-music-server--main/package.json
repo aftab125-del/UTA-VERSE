@@ -1,0 +1,18 @@
+{
+  "name": "nebula-music-server",
+  "version": "1.0.0",
+  "description": "NebulaMusic audio resolution and caching server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}
