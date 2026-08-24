@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const STREAM_ENDPOINT = "https://nebula-music-server.onrender.com/stream";
+const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
 
 type YouTubeSearchResponse = {
   items?: Array<{
@@ -89,6 +89,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Playback source resolution is not configured." }, { status: 500 });
   }
 
+  if (!NEBULA_MUSIC_SERVER_URL) {
+    console.error("[PlaybackResolver] NEBULA_MUSIC_SERVER_URL is not configured.");
+    return NextResponse.json({ error: "Playback source resolution is not configured." }, { status: 500 });
+  }
+
   try {
     const queries = [`${title} ${artist}`, `${artist} ${title} audio`];
     let candidates: SearchCandidate[] = [];
@@ -133,7 +138,7 @@ export async function POST(request: Request) {
     let lastStreamFailure: { status: number | null; contentType: string | null; videoId: string } | null = null;
     for (const candidate of rankedCandidates) {
       const videoId = candidate.id?.videoId as string;
-      const sourceUrl = `${STREAM_ENDPOINT}/${videoId}`;
+      const sourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${videoId}`;
       console.info("[PlaybackResolver] Probing stream candidate", { title, artist, videoId });
       try {
         const stream = await probeStreamEndpoint(sourceUrl);
