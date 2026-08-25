@@ -15,6 +15,32 @@ interface YouTubeSearchPanelProps {
   initialQuery?: string;
 }
 
+type YouTubeSearchPayload =
+  | YouTubeResult[]
+  | {
+      results?: unknown;
+      items?: unknown;
+      data?: unknown;
+      error?: string;
+    }
+  | null;
+
+function extractResults(payload: YouTubeSearchPayload): YouTubeResult[] {
+  if (Array.isArray(payload)) return payload as YouTubeResult[];
+  if (!payload || typeof payload !== "object") return [];
+
+  for (const value of [payload.results, payload.items, payload.data]) {
+    if (Array.isArray(value)) return value as YouTubeResult[];
+    if (value && typeof value === "object") {
+      const nested = value as { results?: unknown; items?: unknown };
+      if (Array.isArray(nested.results)) return nested.results as YouTubeResult[];
+      if (Array.isArray(nested.items)) return nested.items as YouTubeResult[];
+    }
+  }
+
+  return [];
+}
+
 export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProps) {
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<YouTubeResult[]>([]);
@@ -44,18 +70,19 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
           signal: controller.signal,
           cache: "no-store",
         });
-        const payload = (await response.json().catch(() => null)) as YouTubeResult[] | { error?: string } | null;
+        const payload = (await response.json().catch(() => null)) as YouTubeSearchPayload;
+        const nextResults = extractResults(payload);
         console.info("[YouTubeSearch] Response received", {
           status: response.status,
-          resultCount: Array.isArray(payload) ? payload.length : 0,
-          error: !Array.isArray(payload) && typeof payload?.error === "string" ? payload.error : null,
+          resultCount: nextResults.length,
+          error: payload && !Array.isArray(payload) && typeof payload.error === "string" ? payload.error : null,
         });
 
-        if (!response.ok || !Array.isArray(payload)) {
-          throw new Error(!Array.isArray(payload) && typeof payload?.error === "string" ? payload.error : "YouTube search failed.");
+        if (!response.ok) {
+          throw new Error(payload && !Array.isArray(payload) && typeof payload.error === "string" ? payload.error : "YouTube search failed.");
         }
 
-        setResults(payload);
+        setResults(nextResults);
       } catch (requestError) {
         if (requestError instanceof DOMException && requestError.name === "AbortError") return;
         const message = requestError instanceof Error ? requestError.message : "YouTube search failed.";
