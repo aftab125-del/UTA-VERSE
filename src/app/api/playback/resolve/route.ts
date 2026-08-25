@@ -150,8 +150,15 @@ export async function POST(request: Request) {
           videoId,
         });
         if (stream.usable) {
-          console.info("[PlaybackResolver] Source resolved", { title, artist, videoId, streamUsable: true });
-          return NextResponse.json({ sourceUrl });
+          const resolvedSourceUrl = stream.response.url || sourceUrl;
+          console.info("[PlaybackResolver] Source resolved", {
+            title,
+            artist,
+            videoId,
+            streamUsable: true,
+            finalUrl: resolvedSourceUrl,
+          });
+          return NextResponse.json({ sourceUrl: resolvedSourceUrl });
         }
         lastStreamFailure = { status: stream.response.status, contentType: stream.contentType, videoId };
         console.error("[PlaybackResolver] Stream endpoint returned an upstream error", {

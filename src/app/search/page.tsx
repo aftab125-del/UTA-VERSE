@@ -15,10 +15,23 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   let results;
   let hasError = false;
   if (query) {
+    console.info("[Search] Catalog query submitted", { query });
     try {
       const supabase = await createSupabaseServerClient();
+      console.info("[Search] Catalog request started", { query });
       results = await searchCatalog(query, supabase);
-    } catch {
+      console.info("[Search] Catalog results parsed", {
+        query,
+        tracks: results.tracks.length,
+        albums: results.albums.length,
+        artists: results.artists.length,
+      });
+    } catch (error) {
+      console.error("[Search] Catalog request failed", {
+        query,
+        name: error instanceof Error ? error.name : "UnknownError",
+        message: error instanceof Error ? error.message : "Unknown search error",
+      });
       hasError = true;
     }
   }
