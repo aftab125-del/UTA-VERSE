@@ -50,7 +50,7 @@ async function resolveTrackSource(track: Track): Promise<string> {
   const response = await fetch("/api/playback/resolve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title: track.title, artist: track.artist }),
+    body: JSON.stringify({ title: track.title, artist: track.artist, videoId: track.videoId }),
   });
   const data = (await response.json()) as { sourceUrl?: unknown; error?: unknown };
   console.info("[PlayerStore] Playback resolver response", {

@@ -69,7 +69,7 @@ async function probeStreamEndpoint(sourceUrl: string) {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  let body: { title?: unknown; artist?: unknown };
+  let body: { title?: unknown; artist?: unknown; videoId?: unknown };
 
   try {
     body = await request.json();
@@ -79,12 +79,19 @@ export async function POST(request: Request) {
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const artist = typeof body.artist === "string" ? body.artist.trim() : "";
-  if (!title || !artist || title.length > 200 || artist.length > 200) {
+  const requestedVideoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
+  if (
+    !title ||
+    !artist ||
+    title.length > 200 ||
+    artist.length > 200 ||
+    (requestedVideoId && !/^[A-Za-z0-9_-]{11}$/.test(requestedVideoId))
+  ) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
   const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) {
+  if (!requestedVideoId && !apiKey) {
     console.error("[PlaybackResolver] YOUTUBE_API_KEY is not configured.");
     return NextResponse.json({ error: "Playback source resolution is not configured." }, { status: 500 });
   }
@@ -95,14 +102,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const queries = [`${title} ${artist}`, `${artist} ${title} audio`];
+    const queries = requestedVideoId ? [] : [`${title} ${artist}`, `${artist} ${title} audio`];
     let candidates: SearchCandidate[] = [];
     let lastFailure: { status: number; reason: string | null; message: string | null } | null = null;
 
     for (const searchQuery of queries) {
       const requestUrl = `${YOUTUBE_SEARCH_ENDPOINT}?part=snippet&type=video&videoCategoryId=10&maxResults=5&q=${encodeURIComponent(searchQuery)}&key=[redacted]`;
       console.info("[PlaybackResolver] YouTube search request", { requestUrl, searchQuery });
-      const { response, data } = await searchYouTube(searchQuery, apiKey);
+      const { response, data } = await searchYouTube(searchQuery, apiKey as string);
       const reason = data.error?.errors?.[0]?.reason ?? data.error?.status ?? null;
       const message = data.error?.message ?? null;
       console.info("[PlaybackResolver] YouTube search response", {
@@ -127,9 +134,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The playback source search failed." }, { status: 502 });
     }
 
-    const rankedCandidates = [...candidates]
-      .filter((candidate) => /^[A-Za-z0-9_-]{6,}$/.test(candidate.id?.videoId ?? ""))
-      .sort((left, right) => candidateScore(right, title, artist) - candidateScore(left, title, artist));
+    const rankedCandidates = requestedVideoId
+      ? [{ id: { videoId: requestedVideoId }, snippet: { title, channelTitle: artist } }]
+      : [...candidates]
+        .filter((candidate) => /^[A-Za-z0-9_-]{11}$/.test(candidate.id?.videoId ?? ""))
+        .sort((left, right) => candidateScore(right, title, artist) - candidateScore(left, title, artist));
     if (rankedCandidates.length === 0) {
       console.error("[PlaybackResolver] YouTube returned no video candidates", { title, artist, items: candidates.length });
       return NextResponse.json({ error: "No playable source was found for this track." }, { status: 502 });

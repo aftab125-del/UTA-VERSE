@@ -6,6 +6,7 @@ export interface Track {
   artwork: string;
   duration: number;
   audioUrl?: string;
+  videoId?: string;
 }
 
 export interface Album {
