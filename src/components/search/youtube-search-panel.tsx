@@ -25,20 +25,84 @@ type YouTubeSearchPayload =
     }
   | null;
 
+function normalizeYouTubeResult(item: unknown): YouTubeResult | null {
+  if (!item || typeof item !== "object") return null;
+  const raw = item as Record<string, unknown>;
+
+  const videoId =
+    typeof raw.videoId === "string" && raw.videoId
+      ? raw.videoId
+      : typeof raw.id === "string" && raw.id
+      ? raw.id
+      : typeof (raw.id as Record<string, unknown> | undefined)?.videoId === "string"
+      ? ((raw.id as Record<string, unknown>).videoId as string)
+      : null;
+
+  if (!videoId) return null;
+
+  const snippet = (raw.snippet as Record<string, unknown> | undefined) ?? {};
+
+  const title =
+    typeof raw.title === "string" && raw.title
+      ? raw.title
+      : typeof snippet.title === "string" && snippet.title
+      ? snippet.title
+      : "Untitled Track";
+
+  const channelTitle =
+    typeof raw.channelTitle === "string" && raw.channelTitle
+      ? raw.channelTitle
+      : typeof snippet.channelTitle === "string" && snippet.channelTitle
+      ? snippet.channelTitle
+      : "YouTube";
+
+  const thumbnails = snippet.thumbnails as Record<string, Record<string, unknown>> | undefined;
+  const thumbnail =
+    typeof raw.thumbnail === "string" && raw.thumbnail
+      ? raw.thumbnail
+      : typeof thumbnails?.medium?.url === "string"
+      ? (thumbnails.medium.url as string)
+      : typeof thumbnails?.high?.url === "string"
+      ? (thumbnails.high.url as string)
+      : typeof thumbnails?.default?.url === "string"
+      ? (thumbnails.default.url as string)
+      : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+  return {
+    videoId,
+    title,
+    channelTitle,
+    thumbnail,
+  };
+}
+
 function extractResults(payload: YouTubeSearchPayload): YouTubeResult[] {
-  if (Array.isArray(payload)) return payload as YouTubeResult[];
   if (!payload || typeof payload !== "object") return [];
 
-  for (const value of [payload.results, payload.items, payload.data]) {
-    if (Array.isArray(value)) return value as YouTubeResult[];
-    if (value && typeof value === "object") {
-      const nested = value as { results?: unknown; items?: unknown };
-      if (Array.isArray(nested.results)) return nested.results as YouTubeResult[];
-      if (Array.isArray(nested.items)) return nested.items as YouTubeResult[];
+  let rawList: unknown[] = [];
+  if (Array.isArray(payload)) {
+    rawList = payload;
+  } else {
+    for (const value of [payload.results, payload.items, payload.data]) {
+      if (Array.isArray(value)) {
+        rawList = value;
+        break;
+      }
+      if (value && typeof value === "object") {
+        const nested = value as { results?: unknown; items?: unknown };
+        if (Array.isArray(nested.results)) {
+          rawList = nested.results;
+          break;
+        }
+        if (Array.isArray(nested.items)) {
+          rawList = nested.items;
+          break;
+        }
+      }
     }
   }
 
-  return [];
+  return rawList.map(normalizeYouTubeResult).filter((item): item is YouTubeResult => item !== null);
 }
 
 export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProps) {
@@ -47,6 +111,10 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setTrack = usePlayerStore((state) => state.setTrack);
+
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
 
   useEffect(() => {
     const normalizedQuery = query.trim();
@@ -90,7 +158,7 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
         setResults([]);
         setError(message);
       } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
+        setIsLoading(false);
       }
     }, 450);
 
@@ -99,6 +167,9 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
       controller.abort();
     };
   }, [query]);
+
+  const hasResults = results.length > 0;
+  const showEmptyState = !isLoading && !error && query.trim().length > 0 && !hasResults;
 
   return (
     <section className="content-section youtube-search" aria-labelledby="youtube-search-heading">
@@ -120,8 +191,8 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
       />
       {isLoading && <p className="youtube-search__status">Searching YouTube…</p>}
       {error && <p className="youtube-search__status youtube-search__status--error">{error}</p>}
-      {!isLoading && !error && query.trim() && !results.length && <p className="youtube-search__status">No YouTube music results found.</p>}
-      {results.length > 0 && (
+      {showEmptyState && <p className="youtube-search__status">No YouTube music results found.</p>}
+      {!isLoading && hasResults && (
         <div className="youtube-search__results">
           {results.map((result) => (
             <YouTubeResultCard key={result.videoId} result={result} onPlay={() => void setTrack(toTrack(result))} />
