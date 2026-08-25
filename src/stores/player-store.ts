@@ -53,6 +53,12 @@ async function resolveTrackSource(track: Track): Promise<string> {
     body: JSON.stringify({ title: track.title, artist: track.artist }),
   });
   const data = (await response.json()) as { sourceUrl?: unknown; error?: unknown };
+  console.info("[PlayerStore] Playback resolver response", {
+    status: response.status,
+    ok: response.ok,
+    hasSourceUrl: typeof data.sourceUrl === "string" && data.sourceUrl.length > 0,
+    error: typeof data.error === "string" ? data.error : null,
+  });
   if (!response.ok || typeof data.sourceUrl !== "string" || !data.sourceUrl) {
     throw new Error(typeof data.error === "string" ? data.error : "The playback source could not be resolved.");
   }

@@ -65,7 +65,15 @@ export class AudioEngine {
 
   async play() {
     if (!this.hasSource) throw new Error("No audio source is loaded.");
-    await this.element.play();
+    try {
+      await this.element.play();
+    } catch (error) {
+      console.error("[AudioEngine] Browser playback request failed", {
+        name: error instanceof Error ? error.name : "UnknownError",
+        message: error instanceof Error ? error.message : "Unknown playback error",
+      });
+      throw error;
+    }
   }
 
   pause() {
