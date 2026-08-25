@@ -7,7 +7,9 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const YTDLP_TIMEOUT_MS = Number(process.env.YTDLP_TIMEOUT_MS) || 120000;
+// Each of the three fallback clients shares this timeout; keep it low enough
+// to stay within upstream Vercel/Northflank request timeout limits.
+const YTDLP_TIMEOUT_MS = Number(process.env.YTDLP_TIMEOUT_MS) || 25000;
 const DIAGNOSTIC_TEXT_LIMIT = 24000;
 
 // -----------------------------------------------------------------------------
@@ -278,8 +280,6 @@ function processAndCacheAudio(videoId) {
     `https://www.youtube.com/watch?v=${videoId}`;
 
   const promise = new Promise((resolve, reject) => {
-    const startedAt = Date.now();
-    let timedOut = false;
     let settled = false;
     console.log(
       `[yt-dlp] Starting extraction: ${videoId}`
@@ -287,122 +287,117 @@ function processAndCacheAudio(videoId) {
 
     cleanup();
 
-    const args = [
-      '--no-playlist',
+    const playerClients = ['android', 'ios', 'web'];
 
-      // Prefer m4a audio.
-      '-f',
-      'bestaudio[ext=m4a]/bestaudio/best',
+    const runExtraction = (playerClient) => new Promise((resolveAttempt, rejectAttempt) => {
+      const args = [
+        '--no-playlist',
+        '-f',
+        'bestaudio[ext=m4a]/bestaudio/best',
+        '--extract-audio',
+        '--audio-format',
+        'm4a',
+        '--js-runtimes',
+        'deno',
+        '--remote-components',
+        'ejs:github',
+        '--extractor-args',
+        `youtube:player_client=${playerClient}`,
+        '-o',
+        tempPath,
+        youtubeUrl,
+      ];
+      const command = `yt-dlp ${args.map((arg) => JSON.stringify(arg)).join(' ')}`;
+      const ytdlp = spawn('yt-dlp', args, { env: process.env });
+      let stderr = '';
+      let stdout = '';
+      let attemptTimedOut = false;
+      let attemptSettled = false;
+      const attemptStartedAt = Date.now();
 
-      // Convert fallback formats to m4a.
-      '--extract-audio',
-      '--audio-format',
-      'm4a',
-
-      // YouTube JS challenge support.
-      '--js-runtimes',
-      'deno',
-
-      '--remote-components',
-      'ejs:github',
-
-      // Use the web player client.
-      '--extractor-args',
-      'youtube:player_client=web',
-
-      // Output.
-      '-o',
-      tempPath,
-
-      youtubeUrl,
-    ];
-
-    const ytdlp = spawn(
-      'yt-dlp',
-      args,
-      {
-        env: process.env,
-      }
-    );
-
-    let stderr = '';
-    let stdout = '';
-
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      console.error(`[yt-dlp] Timeout after ${YTDLP_TIMEOUT_MS}ms: ${videoId}`);
-      ytdlp.kill('SIGTERM');
-      setTimeout(() => {
-        if (!settled) ytdlp.kill('SIGKILL');
-      }, 2000).unref();
-    }, YTDLP_TIMEOUT_MS);
-
-    ytdlp.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    ytdlp.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    ytdlp.on('error', (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      cleanup();
-
-      console.error('[yt-dlp diagnostic]', {
-        videoId,
-        exitCode: null,
-        signal: null,
-        timedOut,
-        elapsedMs: Date.now() - startedAt,
-        outputExists: false,
-        outputBytes: 0,
-        stderr: sanitizeDiagnosticText(stderr),
-        stdout: sanitizeDiagnosticText(stdout),
-        spawnError: error.message,
-      });
-
-      reject(
-        new Error(
-          `Unable to start yt-dlp: ${error.message}`
-        )
-      );
-    });
-
-    ytdlp.on('close', async (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      const outputExists = fs.existsSync(tempPath);
-      const outputBytes = outputExists ? fs.statSync(tempPath).size : 0;
-      console.error('[yt-dlp diagnostic]', {
-        videoId,
-        exitCode: code,
-        signal: timedOut ? 'SIGTERM/SIGKILL' : null,
-        timedOut,
-        elapsedMs: Date.now() - startedAt,
-        outputExists,
-        outputBytes,
-        stderr: sanitizeDiagnosticText(stderr),
-        stdout: sanitizeDiagnosticText(stdout),
-      });
-
-      if (
-        code !== 0 ||
-        !outputExists
-      ) {
+      const finishFailure = (error, code = null) => {
+        if (attemptSettled) return;
+        attemptSettled = true;
+        clearTimeout(timeout);
         cleanup();
+        console.error('[yt-dlp diagnostic]', {
+          videoId,
+          playerClient,
+          command,
+          exitCode: code,
+          signal: attemptTimedOut ? 'SIGTERM/SIGKILL' : null,
+          timedOut: attemptTimedOut,
+          elapsedMs: Date.now() - attemptStartedAt,
+          outputExists: false,
+          outputBytes: 0,
+          stderr: sanitizeDiagnosticText(stderr),
+          stdout: sanitizeDiagnosticText(stdout),
+          spawnError: error?.message || null,
+        });
+        rejectAttempt(error || new Error(`yt-dlp exited with code ${code}`));
+      };
 
-        reject(
-          new Error(
-            `yt-dlp exited with code ${code}${timedOut ? ' after timeout' : ''}`
-          )
-        );
+      const timeout = setTimeout(() => {
+        attemptTimedOut = true;
+        console.error(`[yt-dlp] Timeout after ${YTDLP_TIMEOUT_MS}ms: ${videoId} (${playerClient})`);
+        ytdlp.kill('SIGTERM');
+        setTimeout(() => {
+          if (!attemptSettled) ytdlp.kill('SIGKILL');
+        }, 2000).unref();
+      }, YTDLP_TIMEOUT_MS);
 
-        return;
+      ytdlp.stdout.on('data', (data) => { stdout += data.toString(); });
+      ytdlp.stderr.on('data', (data) => { stderr += data.toString(); });
+      ytdlp.on('error', (error) => finishFailure(error));
+      ytdlp.on('close', async (code) => {
+        if (attemptSettled) return;
+        const outputExists = fs.existsSync(tempPath);
+        const outputBytes = outputExists ? fs.statSync(tempPath).size : 0;
+        console.error('[yt-dlp diagnostic]', {
+          videoId,
+          playerClient,
+          command,
+          exitCode: code,
+          signal: attemptTimedOut ? 'SIGTERM/SIGKILL' : null,
+          timedOut: attemptTimedOut,
+          elapsedMs: Date.now() - attemptStartedAt,
+          outputExists,
+          outputBytes,
+          stderr: sanitizeDiagnosticText(stderr),
+          stdout: sanitizeDiagnosticText(stdout),
+        });
+
+        if (code !== 0 || !outputExists || outputBytes === 0) {
+          clearTimeout(timeout);
+          cleanup();
+          attemptSettled = true;
+          rejectAttempt(new Error(`yt-dlp exited with code ${code}${attemptTimedOut ? ' after timeout' : ''}`));
+          return;
+        }
+
+        clearTimeout(timeout);
+        attemptSettled = true;
+        resolveAttempt();
+      });
+    });
+
+    const extractWithFallback = async () => {
+      let lastError;
+      for (const playerClient of playerClients) {
+        try {
+          await runExtraction(playerClient);
+          return;
+        } catch (error) {
+          lastError = error;
+          console.warn(`[yt-dlp] ${playerClient} client failed for ${videoId}; trying fallback client.`);
+        }
       }
+      throw lastError || new Error('yt-dlp extraction failed for all configured clients.');
+    };
+
+    extractWithFallback().then(async () => {
+      if (settled) return;
+      settled = true;
 
       try {
         const stats = fs.statSync(tempPath);
@@ -460,6 +455,11 @@ function processAndCacheAudio(videoId) {
         cleanup();
         reject(error);
       }
+    }).catch((error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
     });
 
     function cleanup() {
