@@ -603,6 +603,100 @@ app.get('/health/runtime', async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
+// YouTube metadata search
+// -----------------------------------------------------------------------------
+
+app.get('/search', async (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+  if (!query || query.length > 200) {
+    return res.status(400).json({
+      error: 'A non-empty search query of 200 characters or fewer is required.',
+    });
+  }
+
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) {
+    console.error('[YouTube Search] YOUTUBE_API_KEY is not configured.');
+    return res.status(500).json({
+      error: 'YouTube search is not configured.',
+    });
+  }
+
+  const params = new URLSearchParams({
+    part: 'snippet',
+    type: 'video',
+    videoCategoryId: '10',
+    maxResults: '10',
+    q: query,
+    key: apiKey,
+  });
+  const requestUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=10&q=${encodeURIComponent(query)}&key=[redacted]`;
+
+  try {
+    console.info('[YouTube Search] Request', { requestUrl, query });
+    const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`, {
+      cache: 'no-store',
+    });
+    const payload = await response.json().catch(() => ({}));
+    const errorReason = sanitizeDiagnosticText(payload?.error?.errors?.[0]?.reason || payload?.error?.status || '') || null;
+    const errorMessage = sanitizeDiagnosticText(payload?.error?.message || '') || null;
+
+    console.info('[YouTube Search] Response', {
+      status: response.status,
+      query,
+      items: Array.isArray(payload?.items) ? payload.items.length : 0,
+      reason: errorReason,
+      message: errorMessage,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        const quotaExceeded = errorReason === 'quotaExceeded' || errorReason === 'dailyLimitExceeded';
+        console.error('[YouTube Search] Authorization failure', {
+          status: response.status,
+          reason: errorReason,
+          quotaExceeded,
+          message: errorMessage,
+        });
+        return res.status(quotaExceeded ? 429 : 502).json({
+          error: quotaExceeded ? 'YouTube search quota has been exceeded.' : 'YouTube search authorization failed.',
+        });
+      }
+
+      console.error('[YouTube Search] Upstream failure', {
+        status: response.status,
+        reason: errorReason,
+        message: errorMessage,
+      });
+      return res.status(502).json({ error: 'YouTube search is temporarily unavailable.' });
+    }
+
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const results = items
+      .map((item) => ({
+        videoId: typeof item?.id?.videoId === 'string' ? item.id.videoId : '',
+        title: typeof item?.snippet?.title === 'string' ? item.snippet.title : '',
+        channelTitle: typeof item?.snippet?.channelTitle === 'string' ? item.snippet.channelTitle : '',
+        thumbnail: typeof item?.snippet?.thumbnails?.high?.url === 'string'
+          ? item.snippet.thumbnails.high.url
+          : typeof item?.snippet?.thumbnails?.default?.url === 'string'
+            ? item.snippet.thumbnails.default.url
+            : '',
+      }))
+      .filter((item) => item.videoId && item.title);
+
+    return res.json(results);
+  } catch (error) {
+    console.error('[YouTube Search] Network failure', {
+      query,
+      message: sanitizeDiagnosticText(error instanceof Error ? error.message : error),
+    });
+    return res.status(502).json({ error: 'Unable to reach YouTube search.' });
+  }
+});
+
+// -----------------------------------------------------------------------------
 // Start server
 // -----------------------------------------------------------------------------
 
