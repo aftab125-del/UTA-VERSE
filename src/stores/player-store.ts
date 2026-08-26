@@ -47,23 +47,51 @@ function getErrorMessage(error: unknown, fallback: string) {
 async function resolveTrackSource(track: Track): Promise<string> {
   const cachedSource = resolvedSourceCache.get(track.id);
   if (cachedSource) return cachedSource;
-  const response = await fetch("/api/playback/resolve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title: track.title, artist: track.artist, videoId: track.videoId }),
-  });
-  const data = (await response.json()) as { sourceUrl?: unknown; error?: unknown };
-  console.info("[PlayerStore] Playback resolver response", {
-    status: response.status,
-    ok: response.ok,
-    hasSourceUrl: typeof data.sourceUrl === "string" && data.sourceUrl.length > 0,
-    error: typeof data.error === "string" ? data.error : null,
-  });
-  if (!response.ok || typeof data.sourceUrl !== "string" || !data.sourceUrl) {
+
+  const maxAttempts = 45;
+  let videoIdOverride = track.videoId;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const response = await fetch("/api/playback/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: track.title, artist: track.artist, videoId: videoIdOverride }),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      status?: unknown;
+      sourceUrl?: unknown;
+      videoId?: unknown;
+      error?: unknown;
+    };
+
+    console.info("[PlayerStore] Playback resolver response", {
+      attempt: attempt + 1,
+      status: response.status,
+      ok: response.ok,
+      payloadStatus: typeof data.status === "string" ? data.status : null,
+      hasSourceUrl: typeof data.sourceUrl === "string" && data.sourceUrl.length > 0,
+      videoId: typeof data.videoId === "string" ? data.videoId : null,
+      error: typeof data.error === "string" ? data.error : null,
+    });
+
+    if (typeof data.videoId === "string" && data.videoId) {
+      videoIdOverride = data.videoId;
+    }
+
+    if (response.ok && typeof data.sourceUrl === "string" && data.sourceUrl) {
+      resolvedSourceCache.set(track.id, data.sourceUrl);
+      return data.sourceUrl;
+    }
+
+    if (response.status === 202 || data.status === "processing") {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      continue;
+    }
+
     throw new Error(typeof data.error === "string" ? data.error : "The playback source could not be resolved.");
   }
-  resolvedSourceCache.set(track.id, data.sourceUrl);
-  return data.sourceUrl;
+
+  throw new Error("Playback resolution timed out after 90 seconds.");
 }
 
 function isCurrentRequest(requestId: number, track: Track, get: () => PlayerState) {

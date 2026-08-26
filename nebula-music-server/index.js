@@ -475,13 +475,35 @@ function processAndCacheAudio(videoId) {
 
   inFlightDownloads.set(videoId, promise);
 
-  promise.then(() => {
-    inFlightDownloads.delete(videoId);
-  }, () => {
-    inFlightDownloads.delete(videoId);
-  });
+  promise.then(
+    () => {
+      inFlightDownloads.delete(videoId);
+    },
+    () => {
+      inFlightDownloads.delete(videoId);
+    }
+  );
 
   return promise;
+}
+
+const failedExtractions = new Map();
+
+function recordExtractionFailure(videoId, message) {
+  failedExtractions.set(videoId, {
+    error: message || 'Audio extraction failed.',
+    timestamp: Date.now(),
+  });
+}
+
+function getExtractionFailure(videoId) {
+  const entry = failedExtractions.get(videoId);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > 120000) {
+    failedExtractions.delete(videoId);
+    return null;
+  }
+  return entry.error;
 }
 
 // -----------------------------------------------------------------------------
@@ -506,48 +528,74 @@ app.get('/stream/:videoId', async (req, res) => {
     // 1. Check Supabase cache.
     // ---------------------------------------------------------
 
-    const cachedUrl =
-      await getSupabaseAudioUrl(videoId);
+    const cachedUrl = await getSupabaseAudioUrl(videoId);
 
     if (cachedUrl) {
+      failedExtractions.delete(videoId);
       console.log(
         `[Server] Cache hit: ${videoId}`
       );
 
-      return res.redirect(
-        302,
-        cachedUrl
-      );
+      if (req.query.redirect === 'true') {
+        return res.redirect(302, cachedUrl);
+      }
+
+      return res.status(200).json({
+        status: 'ready',
+        url: cachedUrl,
+      });
     }
 
     // ---------------------------------------------------------
-    // 2. Download + cache.
+    // 2. Check recent failure.
     // ---------------------------------------------------------
 
-    console.log(
-      `[Server] Cache miss: ${videoId}`
-    );
-
-    const result =
-      await processAndCacheAudio(videoId);
-
-    if (!result.uploadedUrl) {
-      throw new Error(
-        'Audio was extracted but no storage URL was returned.'
+    const recentFailure = getExtractionFailure(videoId);
+    if (recentFailure) {
+      console.log(
+        `[Server] Returning recent extraction failure for ${videoId}`
       );
+      return res.status(503).json({
+        error: recentFailure,
+        status: 'error',
+      });
+    }
+
+    // ---------------------------------------------------------
+    // 3. Non-blocking extraction trigger or status check.
+    // ---------------------------------------------------------
+
+    if (inFlightDownloads.has(videoId)) {
+      console.log(
+        `[Server] Extraction in progress: ${videoId}`
+      );
+      return res.status(202).json({
+        status: 'processing',
+      });
     }
 
     console.log(
-      `[Server] Returning cached audio: ${videoId}`
+      `[Server] Cache miss, triggering background extraction: ${videoId}`
     );
 
-    return res.redirect(
-      302,
-      result.uploadedUrl
-    );
+    processAndCacheAudio(videoId)
+      .then(() => {
+        failedExtractions.delete(videoId);
+      })
+      .catch((error) => {
+        console.error(
+          `[Server] Background extraction failed for ${videoId}:`,
+          error.message
+        );
+        recordExtractionFailure(videoId, error.message);
+      });
+
+    return res.status(202).json({
+      status: 'processing',
+    });
   } catch (error) {
     console.error(
-      `[Server] Extraction failed for ${videoId}:`,
+      `[Server] Stream request handler failed for ${videoId}:`,
       error.message
     );
 
