@@ -47,20 +47,46 @@ async function searchYouTube(query: string, apiKey: string) {
   return { response, data };
 }
 
-async function probeStreamEndpoint(sourceUrl: string) {
+type StreamProbeResult =
+  | { status: "ready"; url: string }
+  | { status: "processing" }
+  | { status: "error"; error: string };
+
+async function probeStreamEndpoint(sourceUrl: string): Promise<StreamProbeResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), STREAM_PROBE_TIMEOUT_MS);
   try {
     const response = await fetch(sourceUrl, { cache: "no-store", signal: controller.signal });
     const contentType = response.headers.get("content-type") ?? "";
-    const usable = response.ok && !contentType.toLowerCase().includes("application/json");
-    let upstreamError: string | null = null;
-    if (!usable && contentType.toLowerCase().includes("application/json")) {
-      const payload = (await response.clone().json().catch(() => null)) as { error?: unknown } | null;
-      upstreamError = typeof payload?.error === "string" ? payload.error : null;
+
+    if (response.status === 202) {
+      return { status: "processing" };
     }
-    await response.body?.cancel();
-    return { response, contentType, usable, upstreamError };
+
+    if (response.ok) {
+      if (contentType.toLowerCase().includes("application/json")) {
+        const payload = (await response.json().catch(() => ({}))) as { status?: string; url?: string; error?: string };
+        if (payload.status === "ready" && typeof payload.url === "string" && payload.url) {
+          return { status: "ready", url: payload.url };
+        }
+        if (payload.status === "processing") {
+          return { status: "processing" };
+        }
+      } else {
+        const resolvedUrl = response.url || sourceUrl;
+        return { status: "ready", url: resolvedUrl };
+      }
+    }
+
+    let upstreamError = "Stream endpoint returned an error.";
+    if (contentType.toLowerCase().includes("application/json")) {
+      const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+      if (typeof payload?.error === "string") upstreamError = payload.error;
+    }
+    return { status: "error", error: upstreamError };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown stream probe error";
+    return { status: "error", error: message };
   } finally {
     clearTimeout(timeout);
   }
@@ -144,52 +170,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No playable source was found for this track." }, { status: 502 });
     }
 
-    let lastStreamFailure: { status: number | null; contentType: string | null; videoId: string } | null = null;
+    let lastStreamFailureError: string | null = null;
     for (const candidate of rankedCandidates) {
       const videoId = candidate.id?.videoId as string;
       const sourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${videoId}`;
       console.info("[PlaybackResolver] Probing stream candidate", { title, artist, videoId });
-      try {
-        const stream = await probeStreamEndpoint(sourceUrl);
-        console.info("[PlaybackResolver] Stream endpoint response", {
-          status: stream.response.status,
-          contentType: stream.contentType,
-          usable: stream.usable,
-          upstreamError: stream.upstreamError,
-          videoId,
-        });
-        if (stream.usable) {
-          const resolvedSourceUrl = stream.response.url || sourceUrl;
-          console.info("[PlaybackResolver] Source resolved", {
-            title,
-            artist,
-            videoId,
-            streamUsable: true,
-            finalUrl: resolvedSourceUrl,
-          });
-          return NextResponse.json({ sourceUrl: resolvedSourceUrl });
-        }
-        lastStreamFailure = { status: stream.response.status, contentType: stream.contentType, videoId };
-        console.error("[PlaybackResolver] Stream endpoint returned an upstream error", {
-          status: stream.response.status,
-          videoId,
-          upstreamError: stream.upstreamError,
-        });
-      } catch (error) {
-        const probeError = error instanceof Error ? error : new Error("Unknown stream probe error");
-        console.error("[PlaybackResolver] Stream endpoint probe failed", {
+      const stream = await probeStreamEndpoint(sourceUrl);
+      console.info("[PlaybackResolver] Stream endpoint response", {
+        title,
+        artist,
+        videoId,
+        status: stream.status,
+      });
+
+      if (stream.status === "ready") {
+        console.info("[PlaybackResolver] Source resolved", {
           title,
           artist,
           videoId,
-          name: probeError.name,
-          message: probeError.message,
+          finalUrl: stream.url,
         });
-        lastStreamFailure = { status: null, contentType: null, videoId };
+        return NextResponse.json({ status: "ready", sourceUrl: stream.url, videoId });
       }
+
+      if (stream.status === "processing") {
+        console.info("[PlaybackResolver] Stream processing in background", { title, artist, videoId });
+        return NextResponse.json({ status: "processing", videoId }, { status: 202 });
+      }
+
+      lastStreamFailureError = stream.error;
+      console.error("[PlaybackResolver] Stream candidate returned error", { title, artist, videoId, error: stream.error });
     }
 
-    console.error("[PlaybackResolver] All stream candidates failed", { title, artist, candidates: rankedCandidates.length, lastStreamFailure });
-    return NextResponse.json({ error: "The resolved playback stream is unavailable." }, { status: 502 });
+    console.error("[PlaybackResolver] All stream candidates failed", { title, artist, candidates: rankedCandidates.length, lastStreamFailureError });
+    return NextResponse.json({ error: lastStreamFailureError || "The resolved playback stream is unavailable." }, { status: 502 });
   } catch (error) {
     const resolverError = error instanceof Error ? error : new Error("Unknown resolver error");
     const cause = resolverError.cause;
