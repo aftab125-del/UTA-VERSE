@@ -6,6 +6,7 @@ import { CatalogState } from "@/components/catalog/catalog-state";
 import { SectionHeading } from "@/components/layout/section-heading";
 import { AppShell } from "@/components/shell/app-shell";
 import { BallpitBackground } from "@/components/visual/ballpit-background";
+import { BlurText } from "@/components/reactbits/BlurText";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAlbums, getArtists, getTracks } from "@/lib/music/catalog";
 import type { Album, Artist, Track } from "@/types/music";
@@ -66,7 +67,7 @@ async function loadHomeData(): Promise<{ data?: { tracks: Track[]; albums: Album
 }
 
 function HomeStage() {
-  return <section className="home-stage" aria-labelledby="home-heading"><BallpitBackground /><div className="home-stage__veil" aria-hidden="true" /><div className="home-stage__content"><p className="eyebrow">The signal is forming</p><h1 id="home-heading">Find your place in the sound.</h1><p className="home-stage__lede">UTA-VERSE is a cinematic space for listening, discovery, and the music that stays with you.</p><div className="home-stage__rule" aria-hidden="true" /><p className="home-stage__note">The universe is coming into focus.</p></div></section>;
+  return <section className="home-stage" aria-labelledby="home-heading"><BallpitBackground /><div className="home-stage__veil" aria-hidden="true" /><div className="home-stage__content"><p className="eyebrow">The signal is forming</p><h1 id="home-heading"><BlurText text="Find your place in the sound." animateBy="words" direction="top" /></h1><p className="home-stage__lede">UTA-VERSE is a cinematic space for listening, discovery, and the music that stays with you.</p><div className="home-stage__rule" aria-hidden="true" /><p className="home-stage__note">The universe is coming into focus.</p></div></section>;
 }
 
 function CatalogTrackSection({ title, eyebrow, href, tracks, emptyMessage, variant = "row" }: { title: string; eyebrow: string; href?: string; tracks: Awaited<ReturnType<typeof getTracks>>; emptyMessage: string; variant?: "row" | "tile" }) {
