@@ -29,10 +29,10 @@ export function DarkVeilBackground() {
     <div className="dark-veil-wrapper" aria-hidden="true">
       <DarkVeil
         hueShift={0.0}
-        noiseIntensity={0.02}
+        noiseIntensity={0.15}
         scanlineIntensity={0}
         speed={0.3}
-        warpAmount={0.05}
+        warpAmount={0.3}
       />
     </div>
   );

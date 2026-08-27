@@ -30,7 +30,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 
 .app-shell { min-height: 100svh; background: radial-gradient(circle at 50% -20%, rgba(111, 88, 190, 0.15), transparent 42rem), var(--color-void); }
 .app-shell__sidebar { position: fixed; z-index: 5; inset: 0 auto 0 0; display: flex; width: 17rem; flex-direction: column; padding: 2.5rem 1.5rem 1.5rem; border-right: 1px solid var(--color-border); background: rgba(7, 8, 14, 0.78); backdrop-filter: blur(1.5rem); }
-.app-shell__main { min-height: 100svh; padding-bottom: 8rem; padding-left: 17rem; }
+.app-shell__main { position: relative; z-index: 1; min-height: 100svh; padding-bottom: 8rem; padding-left: 17rem; }
 .app-shell__mobile-header { display: none; }
 .brand-mark { display: inline-flex; flex-direction: column; gap: 0.15rem; width: fit-content; letter-spacing: 0.18em; text-transform: uppercase; }
 .brand-mark__eyebrow { color: var(--color-muted); font-size: 0.58rem; letter-spacing: 0.28em; }
@@ -45,7 +45,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .sidebar-footer { margin-top: auto; color: rgba(149, 153, 169, 0.55); font-size: 0.7rem; letter-spacing: 0.08em; }
 
 .home-stage { position: relative; display: grid; min-height: min(54rem, 82svh); overflow: hidden; place-items: center; padding: 7rem clamp(2rem, 7vw, 7rem) 4rem; }
-.dark-veil-wrapper { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; opacity: 0.55; }
+.dark-veil-wrapper { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; overflow: hidden; opacity: 0.85; }
 .dark-veil-wrapper--static { background: radial-gradient(circle at 50% -20%, rgba(111, 88, 190, 0.15), transparent 42rem); }
 .ballpit-background, .home-stage__veil { position: absolute; inset: 0; }
 .ballpit-background { z-index: 0; pointer-events: none; opacity: 0.82; }
@@ -58,7 +58,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .home-stage__lede { max-width: 30rem; margin: var(--space-5) 0 0; color: var(--color-muted); font-size: clamp(1rem, 1.6vw, 1.2rem); line-height: 1.65; }
 .home-stage__rule { width: min(100%, 12rem); height: 1px; margin-top: var(--space-6); background: linear-gradient(90deg, var(--color-accent), transparent); }
 .home-stage__note { margin: var(--space-3) 0 0; color: rgba(238, 240, 246, 0.48); font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; }
-.home-content, .route-content { width: min(100%, 78rem); margin: 0 auto; padding: 4rem clamp(1.25rem, 4vw, 4rem) 5rem; }
+.home-content, .route-content { position: relative; z-index: 1; width: min(100%, 78rem); margin: 0 auto; padding: 4rem clamp(1.25rem, 4vw, 4rem) 5rem; }
 .route-content--narrow { width: min(100%, 58rem); }
 .route-title { margin: 0; font-family: var(--font-display); font-size: clamp(3rem, 7vw, 6rem); letter-spacing: -0.06em; line-height: 0.9; text-transform: capitalize; }
 .route-lede { max-width: 38rem; margin: 1.5rem 0 0; color: var(--color-muted); font-size: 1.1rem; line-height: 1.6; }
