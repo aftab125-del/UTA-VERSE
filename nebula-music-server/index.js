@@ -47,6 +47,19 @@ if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 // -----------------------------------------------------------------------------
+// Cookies configuration
+// -----------------------------------------------------------------------------
+
+const COOKIES_PATH = '/secrets/cookies.txt';
+const hasCookiesFile = fs.existsSync(COOKIES_PATH);
+
+if (hasCookiesFile) {
+  console.log(`[Server] YouTube cookies file detected at ${COOKIES_PATH}. Enabling --cookies for yt-dlp.`);
+} else {
+  console.log(`[Server] No YouTube cookies file found at ${COOKIES_PATH}. Running yt-dlp without --cookies.`);
+}
+
+// -----------------------------------------------------------------------------
 // Middleware
 // -----------------------------------------------------------------------------
 
@@ -61,7 +74,7 @@ app.get('/', (req, res) => {
   res.json({
     status: 'NebulaMusic Server is running',
     ytDlp: true,
-    cookies: false,
+    cookies: hasCookiesFile,
     storage: Boolean(supabase),
   });
 });
@@ -248,7 +261,7 @@ async function getRuntimeDiagnostics() {
     },
     deno,
     supabaseConfigured: Boolean(supabase),
-    cookiesConfigured: false,
+    cookiesConfigured: hasCookiesFile,
   };
 }
 
@@ -303,6 +316,7 @@ function processAndCacheAudio(videoId) {
         'ejs:github',
         '--extractor-args',
         `youtube:player_client=${playerClient}`,
+        ...(hasCookiesFile ? ['--cookies', COOKIES_PATH] : []),
         '-o',
         tempPath,
         youtubeUrl,
