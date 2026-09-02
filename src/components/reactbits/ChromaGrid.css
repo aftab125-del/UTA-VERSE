@@ -1,0 +1,185 @@
+.chroma-grid {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-auto-rows: auto;
+  gap: 1rem;
+  margin: 1.25rem 0;
+  box-sizing: border-box;
+
+  --x: 50%;
+  --y: 50%;
+  --r: 260px;
+}
+
+.chroma-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md, 0.875rem);
+  overflow: hidden;
+  border: 1px solid var(--color-border, rgba(220, 216, 255, 0.16));
+  transition: border-color 0.3s ease, transform 0.2s ease;
+  background: var(--card-gradient, linear-gradient(145deg, #1f1438, #06070b));
+  cursor: pointer;
+
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+  --spotlight-color: rgba(169, 139, 255, 0.35);
+}
+
+.chroma-card:hover {
+  border-color: var(--card-border, #a98bff);
+  transform: translateY(-2px);
+}
+
+.chroma-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), var(--spotlight-color), transparent 70%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  z-index: 2;
+}
+
+.chroma-card:hover::before {
+  opacity: 1;
+}
+
+.chroma-img-wrapper {
+  position: relative;
+  z-index: 1;
+  padding: 0.5rem;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.chroma-img-wrapper img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 0.5rem);
+  display: block;
+}
+
+.chroma-play-overlay {
+  position: absolute;
+  inset: 0.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm, 0.5rem);
+  background: rgba(6, 7, 11, 0.45);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.chroma-card:hover .chroma-play-overlay {
+  opacity: 1;
+}
+
+.chroma-play-badge {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 10, 18, 0.88);
+  color: var(--color-accent-bright, #d8ccff);
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.chroma-info {
+  position: relative;
+  z-index: 1;
+  padding: 0.5rem 0.75rem 0.85rem;
+  color: var(--color-ink, #eef0f6);
+}
+
+.chroma-info .name {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chroma-info .role {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted, #9599a9);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chroma-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  backdrop-filter: grayscale(0.8) brightness(0.85);
+  -webkit-backdrop-filter: grayscale(0.8) brightness(0.85);
+  background: rgba(0, 0, 0, 0.001);
+
+  mask-image: radial-gradient(
+    circle var(--r) at var(--x) var(--y),
+    transparent 0%,
+    transparent 20%,
+    rgba(0, 0, 0, 0.15) 40%,
+    rgba(0, 0, 0, 0.45) 70%,
+    white 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    circle var(--r) at var(--x) var(--y),
+    transparent 0%,
+    transparent 20%,
+    rgba(0, 0, 0, 0.15) 40%,
+    rgba(0, 0, 0, 0.45) 70%,
+    white 100%
+  );
+}
+
+.chroma-fade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  backdrop-filter: grayscale(0.8) brightness(0.85);
+  -webkit-backdrop-filter: grayscale(0.8) brightness(0.85);
+  background: rgba(0, 0, 0, 0.001);
+
+  mask-image: radial-gradient(
+    circle var(--r) at var(--x) var(--y),
+    white 0%,
+    white 20%,
+    rgba(255, 255, 255, 0.85) 40%,
+    rgba(255, 255, 255, 0.5) 70%,
+    transparent 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    circle var(--r) at var(--x) var(--y),
+    white 0%,
+    white 20%,
+    rgba(255, 255, 255, 0.85) 40%,
+    rgba(255, 255, 255, 0.5) 70%,
+    transparent 100%
+  );
+
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chroma-overlay,
+  .chroma-fade,
+  .chroma-card::before {
+    display: none;
+  }
+}
