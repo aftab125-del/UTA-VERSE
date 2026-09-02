@@ -154,6 +154,9 @@ export function DarkVeil({
         antialias: false,
       });
       const gl = renderer.gl;
+      gl.canvas.style.pointerEvents = "none";
+      gl.canvas.style.position = "absolute";
+      gl.canvas.style.inset = "0";
       container.appendChild(gl.canvas);
       gl.canvas.classList.add("dark-veil-canvas");
 

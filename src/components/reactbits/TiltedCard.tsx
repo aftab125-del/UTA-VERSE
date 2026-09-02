@@ -6,9 +6,9 @@ import { motion, useMotionValue, useSpring } from "motion/react";
 import "./TiltedCard.css";
 
 const springValues = {
-  damping: 30,
-  stiffness: 100,
-  mass: 2,
+  damping: 25,
+  stiffness: 120,
+  mass: 0.5,
 };
 
 export interface TiltedCardProps {
@@ -36,8 +36,8 @@ export function TiltedCard({
   containerWidth = "100%",
   imageHeight = "100%",
   imageWidth = "100%",
-  scaleOnHover = 1.05,
-  rotateAmplitude = 12,
+  scaleOnHover = 1.08,
+  rotateAmplitude = 16,
   showMobileWarning = false,
   showTooltip = true,
   overlayContent = null,
@@ -57,8 +57,8 @@ export function TiltedCard({
 
   const x = useMotionValue(0);
   const y = useMotionValue(0);
-  const rotateX = useSpring(useMotionValue(0), springValues);
-  const rotateY = useSpring(useMotionValue(0), springValues);
+  const rotateX = useSpring(0, springValues);
+  const rotateY = useSpring(0, springValues);
   const scale = useSpring(1, springValues);
   const opacity = useSpring(0);
   const rotateFigcaption = useSpring(0, {

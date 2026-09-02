@@ -119,7 +119,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .youtube-search__results { display: grid; gap: 0.75rem; margin-top: 1rem; }
 .youtube-result { display: grid; grid-template-columns: 9rem 1fr; gap: 1rem; align-items: center; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.035); transition: background 160ms ease, border-color 160ms ease; }
 .youtube-result--current { border-color: rgba(169, 139, 255, 0.5); background: rgba(169, 139, 255, 0.08); }
-.youtube-result__button { position: relative; display: block; width: 9rem; aspect-ratio: 16 / 9; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: 0.35rem; overflow: hidden; }
+.youtube-result__button { position: relative; display: block; width: 9rem; aspect-ratio: 16 / 9; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: 0.35rem; }
 .youtube-result__thumbnail { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 0.35rem; }
 .youtube-result__icon { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: 50%; background: rgba(10, 10, 18, 0.82); color: var(--color-accent-bright); z-index: 6; pointer-events: none; transition: background 160ms ease, transform 160ms ease; }
 .youtube-result__button:hover .youtube-result__icon { transform: translate(-50%, -50%) scale(1.1); background: rgba(139, 92, 246, 0.88); }
