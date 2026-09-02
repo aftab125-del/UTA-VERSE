@@ -4,7 +4,7 @@
   overflow: hidden;
   --mouse-x: 50%;
   --mouse-y: 50%;
-  --spotlight-color: rgba(169, 139, 255, 0.22);
+  --spotlight-color: rgba(169, 139, 255, 0.45);
 }
 
 .card-spotlight::before {
@@ -15,14 +15,16 @@
   right: 0;
   bottom: 0;
   background: radial-gradient(
-    circle 240px at var(--mouse-x) var(--mouse-y),
-    var(--spotlight-color),
+    circle 260px at var(--mouse-x) var(--mouse-y),
+    var(--spotlight-color) 0%,
+    rgba(139, 92, 246, 0.2) 40%,
     transparent 80%
   );
   opacity: 0;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.3s ease;
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
+  mix-blend-mode: screen;
 }
 
 .card-spotlight:hover::before,

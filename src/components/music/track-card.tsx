@@ -33,7 +33,7 @@ export function TrackCard({ track, variant = "row" }: TrackCardProps) {
   );
 
   const spotlightWrapped = (
-    <SpotlightCard spotlightColor="rgba(169, 139, 255, 0.22)">
+    <SpotlightCard spotlightColor="rgba(169, 139, 255, 0.45)">
       {card}
     </SpotlightCard>
   );
