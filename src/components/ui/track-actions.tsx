@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@/app/library/components/use-library";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Track } from "@/types/music";
-import { usePlayerStore } from "@/stores/player-store";
 
 interface LikeButtonProps {
   trackId: string;
@@ -14,20 +13,24 @@ interface LikeButtonProps {
 export function LikeButton({ trackId, size = "normal" }: LikeButtonProps) {
   const { user } = useUser();
   const [isLiked, setIsLiked] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const supabase = createSupabaseBrowserClient();
 
-  // Load initial state
-  if (user && !loaded) {
-    setLoaded(true);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
     supabase
       .from("liked_tracks")
       .select("track_id")
       .eq("user_id", user.id)
       .eq("track_id", trackId)
       .maybeSingle()
-      .then(({ data }) => setIsLiked(data !== null));
-  }
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { console.error("[LikeButton]", error.message); return; }
+        setIsLiked(data !== null);
+      });
+    return () => { cancelled = true; };
+  }, [user, trackId, supabase]);
 
   const toggle = useCallback(async () => {
     if (!user) return;
@@ -35,17 +38,20 @@ export function LikeButton({ trackId, size = "normal" }: LikeButtonProps) {
     setIsLiked(!wasLiked);
     try {
       if (wasLiked) {
-        await supabase
+        const { error } = await supabase
           .from("liked_tracks")
           .delete()
           .eq("user_id", user.id)
           .eq("track_id", trackId);
+        if (error) throw error;
       } else {
-        await supabase
+        const { error } = await supabase
           .from("liked_tracks")
           .insert({ user_id: user.id, track_id: trackId });
+        if (error) throw error;
       }
-    } catch {
+    } catch (err) {
+      console.error("[LikeButton] toggle failed", err);
       setIsLiked(wasLiked);
     }
   }, [user, isLiked, trackId, supabase]);
@@ -79,11 +85,12 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
 
   const loadPlaylists = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("playlists")
       .select("id, name")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
+    if (error) { console.error("[AddToPlaylist]", error.message); return; }
     setPlaylists(data ?? []);
   }, [user, supabase]);
 
@@ -93,7 +100,6 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
   }
 
   async function addToPlaylist(playlistId: string, playlistName: string) {
-    // Get current max position
     const { data: existing } = await supabase
       .from("playlist_tracks")
       .select("position")
@@ -102,9 +108,10 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
       .limit(1);
     const position = existing && existing.length > 0 ? existing[0].position + 1 : 0;
 
-    await supabase
+    const { error } = await supabase
       .from("playlist_tracks")
       .upsert({ playlist_id: playlistId, track_id: track.id, position }, { onConflict: "playlist_id,track_id" });
+    if (error) { console.error("[AddToPlaylist] insert failed", error.message); return; }
     setToast(`Added to ${playlistName}`);
     setOpen(false);
     setTimeout(() => setToast(null), 2500);
@@ -113,15 +120,17 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
   async function createAndAdd() {
     if (!user || !newName.trim()) return;
     setCreating(true);
-    const { data: playlist } = await supabase
+    const { data: playlist, error: createError } = await supabase
       .from("playlists")
       .insert({ user_id: user.id, name: newName.trim() })
       .select("id, name")
       .single();
+    if (createError) { console.error("[AddToPlaylist] create failed", createError.message); setCreating(false); return; }
     if (playlist) {
-      await supabase
+      const { error: trackError } = await supabase
         .from("playlist_tracks")
         .insert({ playlist_id: playlist.id, track_id: track.id, position: 0 });
+      if (trackError) { console.error("[AddToPlaylist] add track failed", trackError.message); }
       setToast(`Created "${playlist.name}" and added track`);
       setOpen(false);
       setNewName("");

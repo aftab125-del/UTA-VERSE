@@ -10,19 +10,18 @@ export function useUser() {
   const supabase = createSupabaseBrowserClient();
 
   useEffect(() => {
+    let mounted = true;
     supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-      setLoading(false);
+      if (mounted) { setUser(data.user); setLoading(false); }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
+      if (mounted) { setUser(session?.user ?? null); setLoading(false); }
     });
 
-    return () => subscription.unsubscribe();
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, [supabase]);
 
   return { user, loading };
@@ -39,23 +38,26 @@ export function useLikedTracks(trackIds: string[]) {
       setLikedIds(new Set());
       return;
     }
+    let cancelled = false;
     setLoading(true);
     supabase
       .from("liked_tracks")
       .select("track_id")
       .eq("user_id", user.id)
       .in("track_id", trackIds)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { console.error("[useLikedTracks]", error.message); setLoading(false); return; }
         setLikedIds(new Set(data?.map((r) => r.track_id) ?? []));
         setLoading(false);
       });
+    return () => { cancelled = true; };
   }, [user, trackIds.join(","), supabase]);
 
   const toggle = useCallback(
     async (trackId: string) => {
       if (!user) return;
       const wasLiked = likedIds.has(trackId);
-      // Optimistic update
       setLikedIds((prev) => {
         const next = new Set(prev);
         if (wasLiked) next.delete(trackId);
@@ -76,8 +78,8 @@ export function useLikedTracks(trackIds: string[]) {
             .insert({ user_id: user.id, track_id: trackId });
           if (error) throw error;
         }
-      } catch {
-        // Revert on error
+      } catch (err) {
+        console.error("[useLikedTracks] toggle failed", err);
         setLikedIds((prev) => {
           const next = new Set(prev);
           if (wasLiked) next.add(trackId);
