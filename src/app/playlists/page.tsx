@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { CatalogState } from "@/components/catalog/catalog-state";
 import { AppShell } from "@/components/shell/app-shell";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { PlaylistsGrid } from "@/components/playlist/playlists-grid";
 
 export default async function PlaylistsPage() {
   const supabase = await createSupabaseServerClient();
@@ -12,19 +12,17 @@ export default async function PlaylistsPage() {
       <div className="route-content route-content--narrow">
         <p className="eyebrow">Your compositions</p>
         <h1 className="route-title">Playlists</h1>
-        <p className="route-lede">Create and arrange personal listening spaces once account access is available.</p>
+        <p className="route-lede">Create and arrange personal listening spaces.</p>
 
         {user ? (
-          <CatalogState
-            title="No playlists yet"
-            message="Create your first playlist to start organizing your listening experience. Playlist creation is coming soon."
-          />
+          <PlaylistsGrid userId={user.id} />
         ) : (
           <>
-            <CatalogState
-              title="Sign in to manage playlists"
-              message="Playlist ownership is protected by Supabase RLS and will be connected in the authentication phase."
-            />
+            <div className="empty-panel catalog-state">
+              <span className="empty-panel__mark" aria-hidden="true">≡</span>
+              <h2>Sign in to manage playlists</h2>
+              <p>Playlist ownership is protected by Supabase RLS.</p>
+            </div>
             <Link href="/auth/signin" className="auth-cta-link">
               Sign in to get started
             </Link>

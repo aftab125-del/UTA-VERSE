@@ -335,3 +335,47 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 /* ── Toast ──────────────────────────────────────────────────────────────────── */
 .toast { position: fixed; bottom: 7rem; left: 50%; transform: translateX(-50%); z-index: 30; padding: 0.6rem 1.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: rgba(14, 16, 28, 0.95); backdrop-filter: blur(1rem); color: var(--color-ink); font-size: 0.82rem; font-weight: 600; box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.4); animation: toast-in 200ms ease; }
 @keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(0.5rem); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* ── Playlists grid ─────────────────────────────────────────────────────────── */
+.playlists-header { display: flex; justify-content: flex-end; margin-bottom: 1.5rem; }
+.playlists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 1.25rem; }
+.playlist-card { position: relative; }
+.playlist-card__link { display: block; padding: 0.75rem; border: 1px solid transparent; border-radius: var(--radius-md); transition: background 160ms ease, border-color 160ms ease, transform 160ms ease; }
+.playlist-card__link:hover { border-color: var(--color-border); background: var(--color-surface); transform: translateY(-0.2rem); }
+.playlist-card__art { aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; background: linear-gradient(135deg, #171927, #36306c); }
+.playlist-card__art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.playlist-card__art .artwork-tile { width: 100%; height: 100%; }
+.playlist-card__info { margin-top: 0.65rem; }
+.playlist-card__info strong { display: block; overflow: hidden; font-size: 0.88rem; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-card__info span { display: block; margin-top: 0.15rem; color: var(--color-muted); font-size: 0.72rem; }
+.playlist-card__delete { position: absolute; top: 0.5rem; right: 0.5rem; border: 0; background: rgba(10, 11, 20, 0.8); color: var(--color-muted); font-size: 0.7rem; width: 1.6rem; height: 1.6rem; border-radius: 50%; cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity 160ms ease, color 160ms ease; }
+.playlist-card:hover .playlist-card__delete { opacity: 1; }
+.playlist-card__delete:hover { color: #ff9caa; }
+
+/* ── Playlist detail ────────────────────────────────────────────────────────── */
+.playlist-detail__art { width: 100%; max-width: 18rem; aspect-ratio: 1; border-radius: var(--radius-md); overflow: hidden; }
+.playlist-detail__cover-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.playlist-detail__meta { margin-top: 0.5rem; color: var(--color-muted); font-size: 0.82rem; }
+.playlist-detail__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.25rem; }
+.playlist-detail__shuffle-btn { background: transparent !important; color: var(--color-accent-bright) !important; border: 1px solid rgba(169, 139, 255, 0.4) !important; }
+.playlist-detail__edit-btn, .playlist-detail__delete-btn { padding: 0.55rem 1rem; border: 1px solid var(--color-border); border-radius: 2rem; background: transparent; color: var(--color-muted); font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: color 160ms ease, border-color 160ms ease; }
+.playlist-detail__edit-btn:hover { color: var(--color-ink); border-color: rgba(220, 216, 255, 0.32); }
+.playlist-detail__delete-btn:hover { color: #ff9caa; border-color: rgba(255, 139, 139, 0.32); }
+
+/* ── Context menu ───────────────────────────────────────────────────────────── */
+.context-menu { position: fixed; z-index: 25; min-width: 12rem; padding: 0.35rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: rgba(14, 16, 28, 0.97); backdrop-filter: blur(2rem); box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.5); }
+.context-menu__item { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.5rem 0.65rem; border: 0; border-radius: calc(var(--radius-sm) - 2px); background: none; color: var(--color-ink); font-size: 0.82rem; text-align: left; cursor: pointer; transition: background 120ms ease; }
+.context-menu__item:hover { background: rgba(169, 139, 255, 0.12); }
+.context-menu__item--danger { color: #ff9caa; }
+.context-menu__item--danger:hover { background: rgba(255, 139, 139, 0.1); }
+.context-menu__icon { flex: 0 0 auto; width: 1.1rem; text-align: center; color: var(--color-muted); font-size: 0.75rem; }
+
+/* ── Confirm dialog ─────────────────────────────────────────────────────────── */
+.modal-card--compact { max-width: 22rem; }
+.confirm-dialog__message { margin: 0 0 1.25rem; color: var(--color-muted); font-size: 0.88rem; line-height: 1.5; }
+.confirm-dialog__actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+.confirm-dialog__cancel { padding: 0.5rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted); font-size: 0.82rem; cursor: pointer; }
+.confirm-dialog__cancel:hover { color: var(--color-ink); border-color: rgba(220, 216, 255, 0.32); }
+.confirm-dialog__confirm { padding: 0.5rem 1rem; border: 1px solid rgba(169, 139, 255, 0.4); border-radius: var(--radius-sm); background: rgba(169, 139, 255, 0.18); color: var(--color-accent-bright); font-weight: 700; font-size: 0.82rem; cursor: pointer; }
+.confirm-dialog__confirm--danger { border-color: rgba(255, 139, 139, 0.4); background: rgba(255, 100, 100, 0.15); color: #ff9caa; }
+.confirm-dialog__confirm--danger:hover { background: rgba(255, 100, 100, 0.25); }
