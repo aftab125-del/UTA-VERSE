@@ -24,3 +24,39 @@ export interface Artist {
   genre: string;
   bio?: string;
 }
+
+export interface Playlist {
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  coverUrl: string | null;
+  folderId: string | null;
+  isPublic: boolean;
+  trackCount: number;
+  totalDuration: number;
+  createdAt: string;
+}
+
+export interface PlaylistWithTracks extends Playlist {
+  tracks: Track[];
+}
+
+export interface PlaylistFolder {
+  id: string;
+  userId: string;
+  name: string;
+  position: number;
+  createdAt: string;
+}
+
+export interface LikedTrack {
+  trackId: string;
+  likedAt: string;
+}
+
+export interface ListeningHistoryEntry {
+  trackId: string;
+  playedAt: string;
+  progressMs: number;
+}
