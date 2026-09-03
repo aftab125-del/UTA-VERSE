@@ -3,6 +3,7 @@
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { usePlayerStore } from "@/stores/player-store";
 import { QueuePanel } from "@/components/player/queue-panel";
+import { LikeButton } from "@/components/ui/track-actions";
 
 export function PlayerDock() {
   const currentTrack = usePlayerStore((state) => state.currentTrack);
@@ -48,6 +49,7 @@ export function PlayerDock() {
             <strong>{currentTrack?.title ?? "Choose something to play"}</strong>
             <span className={error ? "player-dock__error" : undefined}>{error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Your player is ready")}</span>
           </div>
+          {currentTrack && <LikeButton trackId={currentTrack.id} size="small" />}
         </div>
 
         <div className="player-dock__transport">

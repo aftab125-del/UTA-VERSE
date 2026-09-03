@@ -1,6 +1,7 @@
 "use client";
 
 import { ArtworkTile } from "@/components/music/artwork-tile";
+import { LikeButton, AddToPlaylistButton } from "@/components/ui/track-actions";
 import type { Track } from "@/types/music";
 import { usePlayerStore } from "@/stores/player-store";
 import { SpotlightCard } from "@/components/reactbits/SpotlightCard";
@@ -28,7 +29,11 @@ export function TrackCard({ track, variant = "row" }: TrackCardProps) {
         <p>{track.artist}</p>
         <span>{track.album}</span>
       </div>
-      <span className="track-card__duration">{formatDuration(track.duration)}</span>
+      <div className="track-card__actions">
+        <LikeButton trackId={track.id} />
+        <AddToPlaylistButton track={track} />
+        <span className="track-card__duration">{formatDuration(track.duration)}</span>
+      </div>
     </article>
   );
 
@@ -57,4 +62,3 @@ export function TrackCard({ track, variant = "row" }: TrackCardProps) {
 function formatDuration(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
-
