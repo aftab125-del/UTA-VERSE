@@ -232,3 +232,40 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .user-menu__name { overflow: hidden; color: var(--color-ink); font-size: 0.82rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .user-menu__signout { width: 100%; padding: 0.45rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted); font-size: 0.75rem; cursor: pointer; transition: background 160ms ease, color 160ms ease; }
 .user-menu__signout:hover { background: rgba(255, 139, 139, 0.08); color: #ff9caa; border-color: rgba(255, 139, 139, 0.25); }
+
+/* ── Icon button active state ──────────────────────────────────────────────── */
+.icon-button--active { color: var(--color-accent-bright) !important; }
+
+/* ── Queue panel ────────────────────────────────────────────────────────────── */
+.queue-overlay { position: fixed; inset: 0; z-index: 9; background: rgba(0, 0, 0, 0.45); }
+.queue-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(24rem, 92vw); z-index: 10; display: flex; flex-direction: column; border-left: 1px solid var(--color-border); background: rgba(10, 11, 20, 0.96); backdrop-filter: blur(2rem); box-shadow: -2rem 0 5rem rgba(0, 0, 0, 0.5); }
+.queue-panel__header { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; padding: 1.25rem 1.25rem 0.75rem; border-bottom: 1px solid var(--color-border); }
+.queue-panel__header h2 { margin: 0; font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }
+.queue-panel__actions { display: flex; gap: 0.5rem; align-items: center; }
+.queue-panel__clear { border: 0; background: none; color: var(--color-muted); font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: color 160ms ease; }
+.queue-panel__clear:hover { color: #ff9caa; }
+.queue-panel__close { border: 0; background: none; color: var(--color-muted); font-size: 1rem; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: var(--radius-sm); transition: color 160ms ease, background 160ms ease; }
+.queue-panel__close:hover { color: var(--color-ink); background: rgba(255, 255, 255, 0.06); }
+.queue-panel__empty { padding: 3rem 1.25rem; text-align: center; color: var(--color-muted); }
+.queue-panel__empty p { margin: 0; font-size: 0.95rem; color: var(--color-ink); }
+.queue-panel__empty span { display: block; margin-top: 0.5rem; font-size: 0.78rem; }
+.queue-panel__sections { flex: 1 1 auto; overflow-y: auto; padding: 0.75rem 0; }
+.queue-panel__section { padding: 0 0.5rem; }
+.queue-panel__section + .queue-panel__section { margin-top: 0.75rem; }
+.queue-panel__section-label { margin: 0 0.5rem 0.5rem; color: rgba(149, 153, 169, 0.62); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
+.queue-panel__list { display: grid; gap: 0.15rem; }
+
+.queue-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.5rem; border-radius: var(--radius-sm); transition: background 160ms ease; }
+.queue-item:hover { background: rgba(169, 139, 255, 0.06); }
+.queue-item--current { background: rgba(169, 139, 255, 0.1); }
+.queue-item__grip { color: rgba(149, 153, 169, 0.35); font-size: 0.85rem; cursor: grab; user-select: none; flex: 0 0 auto; }
+.queue-item__grip:active { cursor: grabbing; }
+.queue-item__play { border: 0; background: none; color: var(--color-muted); font-size: 0.7rem; cursor: pointer; padding: 0.2rem 0.3rem; border-radius: var(--radius-sm); opacity: 0; transition: opacity 160ms ease, color 160ms ease; flex: 0 0 auto; }
+.queue-item:hover .queue-item__play { opacity: 1; }
+.queue-item__play:hover { color: var(--color-accent-bright); }
+.queue-item__details { min-width: 0; flex: 1; }
+.queue-item__details strong { display: block; overflow: hidden; font-size: 0.82rem; text-overflow: ellipsis; white-space: nowrap; }
+.queue-item__details span { display: block; overflow: hidden; color: var(--color-muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+.queue-item__remove { border: 0; background: none; color: var(--color-muted); font-size: 0.7rem; cursor: pointer; padding: 0.2rem 0.3rem; border-radius: var(--radius-sm); opacity: 0; transition: opacity 160ms ease, color 160ms ease; flex: 0 0 auto; }
+.queue-item:hover .queue-item__remove { opacity: 1; }
+.queue-item__remove:hover { color: #ff9caa; }
