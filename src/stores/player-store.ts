@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { AudioEngine } from "@/lib/audio/audio-engine";
+import { setMediaSessionMetadata, setMediaSessionActionHandlers, setMediaSessionPlaybackState } from "@/lib/audio/media-session";
 import type { Track } from "@/types/music";
 
 export type RepeatMode = "off" | "all" | "one";
@@ -192,6 +193,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ currentTrack: track, queue, queueIndex, preShuffleQueue: null, position: 0, duration: track.duration, buffered: 0, isPlaying: false, isLoading: true, isResolving: !track.audioUrl, error: null });
     persist(get);
 
+    // Update Media Session metadata for system-level display.
+    setMediaSessionMetadata(track);
+    setMediaSessionPlaybackState("paused");
+
     try {
       const sourceUrl = track.audioUrl ?? await resolveTrackSource(track);
       if (!isCurrentRequest(requestId, track, get)) return;
@@ -201,8 +206,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
         onReady: (duration) => set({ duration, isLoading: false, isResolving: false }),
         onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
-        onPlaying: () => set({ isPlaying: true, isLoading: false, isResolving: false, error: null }),
-        onPaused: () => set({ isPlaying: false }),
+        onPlaying: () => { set({ isPlaying: true, isLoading: false, isResolving: false, error: null }); setMediaSessionPlaybackState("playing"); },
+        onPaused: () => { set({ isPlaying: false }); setMediaSessionPlaybackState("paused"); },
         onEnded: () => {
           const { repeatMode } = get();
           if (repeatMode === "one") {
@@ -360,3 +365,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     persist(get);
   },
 }));
+
+// ── Media Session action handlers ─────────────────────────────────────────────
+// Registered once after the store is created. They read from the store directly
+// so they always reflect the latest state.
+if (typeof window !== "undefined") {
+  setMediaSessionActionHandlers({
+    play: () => { void usePlayerStore.getState().togglePlayPause(); },
+    pause: () => { usePlayerStore.getState().pause(); },
+    seekBackward: () => {
+      const { position, seek } = usePlayerStore.getState();
+      seek(Math.max(0, position - 10));
+    },
+    seekForward: () => {
+      const { position, duration, seek } = usePlayerStore.getState();
+      seek(Math.min(duration, position + 10));
+    },
+    previousTrack: () => { usePlayerStore.getState().previous(); },
+    nextTrack: () => { usePlayerStore.getState().next(); },
+  });
+}
