@@ -181,10 +181,18 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .detail-hero { grid-template-columns: 1fr; gap: 1.5rem; }
   .detail-hero .artwork-tile { width: min(100%, 15rem); margin: 0 auto; }
   .player-dock__tools { display: none; }
+  .queue-panel { width: 100vw; }
+  .playlists-grid { grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 1rem; }
+  .liked-songs__header { flex-direction: column; align-items: stretch; text-align: center; }
+  .liked-songs__gradient { width: 6rem; height: 6rem; margin: 0 auto; }
+  .liked-songs__play-btn { width: 100%; }
+  .playlist-detail__art { max-width: 14rem; margin: 0 auto; }
+  .playlist-detail__actions { justify-content: center; }
+  .library-tabs__bar { overflow-x: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
 
 /* ── Auth page ─────────────────────────────────────────────────────────────── */
