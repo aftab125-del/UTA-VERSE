@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { CatalogState } from "@/components/catalog/catalog-state";
 import { AppShell } from "@/components/shell/app-shell";
 import { DarkVeilBackground } from "@/components/visual/dark-veil-background";
 import { BlurText } from "@/components/reactbits/BlurText";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { LibraryContent } from "@/app/library/components/library-content";
 
 export default async function LibraryPage() {
   const supabase = await createSupabaseServerClient();
@@ -20,16 +20,14 @@ export default async function LibraryPage() {
         <p className="route-lede">A home for the tracks and collections you choose to keep close.</p>
 
         {user ? (
-          <CatalogState
-            title="Your library is empty"
-            message="Start exploring and save tracks to build your personal collection. Liked songs and listening history are coming soon."
-          />
+          <LibraryContent />
         ) : (
           <>
-            <CatalogState
-              title="Sign in to build your library"
-              message="Liked songs and listening history require the authentication and account-data phase."
-            />
+            <div className="empty-panel catalog-state">
+              <span className="empty-panel__mark" aria-hidden="true">·</span>
+              <h2>Sign in to build your library</h2>
+              <p>Liked songs and listening history require an account.</p>
+            </div>
             <Link href="/auth/signin" className="auth-cta-link">
               Sign in to get started
             </Link>
