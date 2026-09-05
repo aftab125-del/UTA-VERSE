@@ -119,6 +119,13 @@
   white-space: nowrap;
 }
 
+.chroma-card-overlay {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 5;
+}
+
 .chroma-overlay {
   position: absolute;
   inset: 0;

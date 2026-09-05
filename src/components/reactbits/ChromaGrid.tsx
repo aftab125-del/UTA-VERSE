@@ -27,6 +27,7 @@ export interface ChromaGridProps {
   fadeOut?: number;
   ease?: string;
   onItemClick?: (item: ChromaGridItem, index: number) => void;
+  renderCardOverlay?: (item: ChromaGridItem, index: number) => React.ReactNode;
 }
 
 export function ChromaGrid({
@@ -39,6 +40,7 @@ export function ChromaGrid({
   fadeOut = 0.6,
   ease = "power3.out",
   onItemClick,
+  renderCardOverlay,
 }: ChromaGridProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const fadeRef = useRef<HTMLDivElement>(null);
@@ -155,6 +157,11 @@ export function ChromaGrid({
             <h3 className="name">{c.title}</h3>
             {c.subtitle && <p className="role">{c.subtitle}</p>}
           </footer>
+          {renderCardOverlay && (
+            <div className="chroma-card-overlay">
+              {renderCardOverlay(c, i)}
+            </div>
+          )}
         </article>
       ))}
       {motionAllowed && (

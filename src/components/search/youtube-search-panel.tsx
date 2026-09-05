@@ -6,7 +6,7 @@ import type { Track } from "@/types/music";
 import { TiltedCard } from "@/components/reactbits/TiltedCard";
 import { BorderGlow } from "@/components/reactbits/BorderGlow";
 import { ChromaGrid } from "@/components/reactbits/ChromaGrid";
-import { LikeButton, AddToPlaylistButton } from "@/components/ui/track-actions";
+import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
 
 interface YouTubeResult {
   videoId: string;
@@ -235,7 +235,12 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
       {showEmptyState && <p className="youtube-search__status">No YouTube music results found.</p>}
       {!isLoading && hasResults && (
         viewMode === "grid" ? (
-          <ChromaGrid items={chromaItems} />
+          <ChromaGrid
+            items={chromaItems}
+            renderCardOverlay={(item, index) => (
+              <AddToQueueButton track={toTrack(results[index])} size="small" />
+            )}
+          />
         ) : (
           <div className="youtube-search__results">
             {results.map((result) => {
@@ -296,6 +301,7 @@ function YouTubeResultCard({ result, track, onPlay }: { result: YouTubeResult; t
         <div className="youtube-result__actions">
           <LikeButton track={track} size="small" />
           <AddToPlaylistButton track={track} />
+          <AddToQueueButton track={track} size="small" />
         </div>
       </div>
     </article>
