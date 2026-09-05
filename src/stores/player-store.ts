@@ -323,10 +323,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // ── Queue management ──────────────────────────────────────────────────────
 
   addToQueue: (track) => {
-    const { queue } = get();
+    const { queue, queueIndex } = get();
     const existingIndex = queue.findIndex((t) => t.id === track.id);
     const newQueue = existingIndex >= 0 ? [...queue.slice(0, existingIndex), ...queue.slice(existingIndex + 1), track] : [...queue, track];
-    set({ queue: newQueue });
+    let newQueueIndex = queueIndex;
+    if (existingIndex >= 0) {
+      if (existingIndex < queueIndex) {
+        newQueueIndex = queueIndex - 1;
+      } else if (existingIndex === queueIndex) {
+        newQueueIndex = newQueue.findIndex((t) => t.id === track.id);
+      }
+    }
+    set({ queue: newQueue, queueIndex: newQueueIndex });
     persist(get);
   },
 

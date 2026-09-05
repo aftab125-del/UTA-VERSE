@@ -245,7 +245,10 @@ export function AddToQueueButton({ track, size = "normal" }: AddToQueueButtonPro
       <button
         type="button"
         className={`add-to-queue-button${size === "small" ? " add-to-queue-button--small" : ""}`}
-        onClick={(e) => { e.stopPropagation(); handleClick(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleClick();
+        }}
         aria-label="Add to queue"
       >
         +≡
