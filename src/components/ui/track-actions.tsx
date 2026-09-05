@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@/hooks/use-user";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { usePlayerStore } from "@/stores/player-store";
 import type { Track } from "@/types/music";
 
 interface LikeButtonProps {
@@ -218,6 +219,37 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
           </div>
         </div>
       )}
+
+      {toast && <div className="toast" role="status">{toast}</div>}
+    </>
+  );
+}
+
+interface AddToQueueButtonProps {
+  track: Track;
+  size?: "small" | "normal";
+}
+
+export function AddToQueueButton({ track, size = "normal" }: AddToQueueButtonProps) {
+  const addToQueue = usePlayerStore((state) => state.addToQueue);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const handleClick = useCallback(() => {
+    addToQueue(track);
+    setToast("Added to queue");
+    setTimeout(() => setToast(null), 2500);
+  }, [addToQueue, track]);
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`add-to-queue-button${size === "small" ? " add-to-queue-button--small" : ""}`}
+        onClick={(e) => { e.stopPropagation(); handleClick(); }}
+        aria-label="Add to queue"
+      >
+        +≡
+      </button>
 
       {toast && <div className="toast" role="status">{toast}</div>}
     </>
