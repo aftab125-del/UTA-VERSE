@@ -158,7 +158,7 @@ export function ChromaGrid({
             {c.subtitle && <p className="role">{c.subtitle}</p>}
           </footer>
           {renderCardOverlay && (
-            <div className="chroma-card-overlay">
+            <div className="chroma-card-overlay" onClick={(e) => e.stopPropagation()}>
               {renderCardOverlay(c, i)}
             </div>
           )}
