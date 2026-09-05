@@ -64,7 +64,12 @@ export function PlaylistsGrid({ userId }: PlaylistsGridProps) {
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    await supabase.from("playlists").delete().eq("id", deleteTarget.id);
+    const { error } = await supabase.from("playlists").delete().eq("id", deleteTarget.id);
+    if (error) {
+      console.error("[PlaylistsGrid] Failed to delete playlist", { playlistId: deleteTarget.id, error: error.message });
+      setDeleting(false);
+      return;
+    }
     setPlaylists((prev) => prev.filter((p) => p.id !== deleteTarget.id));
     setDeleteTarget(null);
     setDeleting(false);

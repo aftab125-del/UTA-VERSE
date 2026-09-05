@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { AudioEngine } from "@/lib/audio/audio-engine";
 import { setMediaSessionMetadata, setMediaSessionActionHandlers, setMediaSessionPlaybackState } from "@/lib/audio/media-session";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { recordListeningHistory } from "@/lib/music/library";
 import type { Track } from "@/types/music";
 
 export type RepeatMode = "off" | "all" | "one";
@@ -101,6 +103,7 @@ type PlayerState = {
 let audioEngine: AudioEngine | null = null;
 let playbackRequestId = 0;
 const resolvedSourceCache = new Map<string, string>();
+const historyCooldown = new Map<string, number>();
 
 function getAudioEngine() {
   if (!audioEngine) audioEngine = new AudioEngine();
@@ -155,6 +158,21 @@ function isCurrentRequest(requestId: number, track: Track, get: () => PlayerStat
   return requestId === playbackRequestId && get().currentTrack?.id === track.id;
 }
 
+async function recordHistory(trackId: string) {
+  const now = Date.now();
+  const lastRecorded = historyCooldown.get(trackId) ?? 0;
+  if (now - lastRecorded < 30_000) return;
+  historyCooldown.set(trackId, now);
+  try {
+    const supabase = createSupabaseBrowserClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await recordListeningHistory(user.id, trackId, 0, supabase);
+  } catch (err) {
+    console.error("[PlayerStore] Failed to record listening history", { trackId, err });
+  }
+}
+
 function persist(get: () => PlayerState) {
   const s = get();
   savePersistedState({
@@ -206,7 +224,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
         onReady: (duration) => set({ duration, isLoading: false, isResolving: false }),
         onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
-        onPlaying: () => { set({ isPlaying: true, isLoading: false, isResolving: false, error: null }); setMediaSessionPlaybackState("playing"); },
+        onPlaying: () => { set({ isPlaying: true, isLoading: false, isResolving: false, error: null }); setMediaSessionPlaybackState("playing"); void recordHistory(track.id); },
         onPaused: () => { set({ isPlaying: false }); setMediaSessionPlaybackState("paused"); },
         onEnded: () => {
           const { repeatMode } = get();

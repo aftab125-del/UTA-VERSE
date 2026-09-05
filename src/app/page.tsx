@@ -39,7 +39,7 @@ export default async function HomePage() {
             {featured.length ? <div className="track-list" style={{ marginTop: "1.25rem" }}>{featured.map((track) => <TrackCard key={track.id} track={track} />)}</div> : <CatalogState title="Catalog is waiting" message="Featured tracks will appear once catalog records are available." />}
           </section>
 
-          <CatalogTrackSection title="Recently Played" eyebrow="Your orbit" href="/library" tracks={[]} emptyMessage="Listening history will appear after the history feature is connected." />
+          <CatalogTrackSection title="Recently Played" eyebrow="Your orbit" href="/playlists" tracks={[]} emptyMessage="Listening history will appear as you play tracks." />
           <CatalogTrackSection title="Trending" eyebrow="Moving through the signal" href="/discover" tracks={trending} emptyMessage="Trending tracks will appear once catalog data is available." />
           <CatalogTrackSection title="Recommended" eyebrow="Catalog-based selection" tracks={recommended} emptyMessage="Personal recommendations require listening data and are not enabled yet." variant="tile" />
 

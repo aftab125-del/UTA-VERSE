@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useUser } from "@/app/library/components/use-library";
+import { useUser } from "@/hooks/use-user";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Track } from "@/types/music";
 
@@ -100,18 +100,19 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
   }
 
   async function addToPlaylist(playlistId: string, playlistName: string) {
-    const { data: existing } = await supabase
+    const { data: existing, error: posError } = await supabase
       .from("playlist_tracks")
       .select("position")
       .eq("playlist_id", playlistId)
       .order("position", { ascending: false })
       .limit(1);
+    if (posError) { console.error("[AddToPlaylist] Failed to fetch position", posError.message); return; }
     const position = existing && existing.length > 0 ? existing[0].position + 1 : 0;
 
     const { error } = await supabase
       .from("playlist_tracks")
       .upsert({ playlist_id: playlistId, track_id: track.id, position }, { onConflict: "playlist_id,track_id" });
-    if (error) { console.error("[AddToPlaylist] insert failed", error.message); return; }
+    if (error) { console.error("[AddToPlaylist] insert failed", error.message); setToast(`Failed to add to ${playlistName}`); setTimeout(() => setToast(null), 3500); return; }
     setToast(`Added to ${playlistName}`);
     setOpen(false);
     setTimeout(() => setToast(null), 2500);

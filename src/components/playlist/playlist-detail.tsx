@@ -41,11 +41,15 @@ export function PlaylistDetail({ playlist: initial, isOwner }: PlaylistDetailPro
   }
 
   async function handleRemoveTrack(trackId: string) {
-    await supabase
+    const { error } = await supabase
       .from("playlist_tracks")
       .delete()
       .eq("playlist_id", playlist.id)
       .eq("track_id", trackId);
+    if (error) {
+      console.error("[PlaylistDetail] Failed to remove track", { playlistId: playlist.id, trackId, error: error.message });
+      return;
+    }
     setPlaylist((prev) => ({
       ...prev,
       tracks: prev.tracks.filter((t) => t.id !== trackId),
@@ -55,7 +59,12 @@ export function PlaylistDetail({ playlist: initial, isOwner }: PlaylistDetailPro
 
   async function handleDelete() {
     setDeleting(true);
-    await supabase.from("playlists").delete().eq("id", playlist.id);
+    const { error } = await supabase.from("playlists").delete().eq("id", playlist.id);
+    if (error) {
+      console.error("[PlaylistDetail] Failed to delete playlist", { playlistId: playlist.id, error: error.message });
+      setDeleting(false);
+      return;
+    }
     router.push("/playlists");
   }
 
