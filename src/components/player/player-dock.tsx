@@ -49,7 +49,7 @@ export function PlayerDock() {
             <strong>{currentTrack?.title ?? "Choose something to play"}</strong>
             <span className={error ? "player-dock__error" : undefined}>{error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Your player is ready")}</span>
           </div>
-          {currentTrack && <LikeButton trackId={currentTrack.id} size="small" />}
+          {currentTrack && <LikeButton track={currentTrack} size="small" />}
         </div>
 
         <div className="player-dock__transport">

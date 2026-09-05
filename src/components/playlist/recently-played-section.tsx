@@ -23,7 +23,7 @@ export function RecentlyPlayedSection() {
     (async () => {
       const { data: history, error: historyError } = await supabase
         .from("listening_history")
-        .select("track_id")
+        .select("track_id, title, artist, artwork, duration, played_at")
         .eq("user_id", user.id)
         .order("played_at", { ascending: false })
         .limit(150);
@@ -36,41 +36,23 @@ export function RecentlyPlayedSection() {
       }
       if (!history || history.length === 0) { setTracks([]); setLoading(false); return; }
 
+      // Deduplicate by track_id, keeping the most recent entry
       const seen = new Set<string>();
-      const ids: string[] = [];
-      for (const h of history) {
-        if (!seen.has(h.track_id)) { seen.add(h.track_id); ids.push(h.track_id); }
-        if (ids.length >= 50) break;
+      const result: Track[] = [];
+      for (const row of history) {
+        if (!seen.has(row.track_id)) {
+          seen.add(row.track_id);
+          result.push({
+            id: row.track_id,
+            title: row.title || "Untitled",
+            artist: row.artist || "Unknown artist",
+            album: "",
+            artwork: row.artwork,
+            duration: row.duration,
+          });
+        }
+        if (result.length >= 50) break;
       }
-
-      const { data: trackRows, error: tracksError } = await supabase
-        .from("tracks")
-        .select("*, artists(name), albums(title, artwork_url)")
-        .in("id", ids);
-      if (cancelled) return;
-      if (tracksError) {
-        console.error("[RecentlyPlayedSection] Failed to load tracks", tracksError.message);
-        setError("Failed to load track details.");
-        setLoading(false);
-        return;
-      }
-
-      const trackMap = new Map((trackRows ?? []).map((t) => [t.id, t]));
-      const result = ids
-        .map((id) => trackMap.get(id))
-        .filter((t): t is NonNullable<typeof t> => t !== undefined)
-        .map((row) => {
-          const r = row as Record<string, unknown> & { artists: { name: string } | null; albums: { title: string; artwork_url: string | null } | null };
-          return {
-            id: r.id as string,
-            title: r.title as string,
-            artist: (r.artists as { name: string } | null)?.name ?? "Unknown artist",
-            album: (r.albums as { title: string; artwork_url: string | null } | null)?.title ?? "Unknown album",
-            artwork: (r.artwork_url as string | null) ?? (r.albums as { title: string; artwork_url: string | null } | null)?.artwork_url ?? "",
-            duration: r.duration as number,
-            ...((r.audio_url as string | null) ? { audioUrl: r.audio_url as string } : {}),
-          };
-        });
       setTracks(result);
       setLoading(false);
     })();

@@ -23,7 +23,7 @@ export function LikedSongsSection() {
     (async () => {
       const { data: liked, error: likedError } = await supabase
         .from("liked_tracks")
-        .select("track_id")
+        .select("track_id, title, artist, artwork, duration")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       if (cancelled) return;
@@ -35,35 +35,14 @@ export function LikedSongsSection() {
       }
       if (!liked || liked.length === 0) { setTracks([]); setLoading(false); return; }
 
-      const ids = liked.map((l) => l.track_id);
-      const { data: trackRows, error: tracksError } = await supabase
-        .from("tracks")
-        .select("*, artists(name), albums(title, artwork_url)")
-        .in("id", ids);
-      if (cancelled) return;
-      if (tracksError) {
-        console.error("[LikedSongsSection] Failed to load tracks", tracksError.message);
-        setError("Failed to load track details.");
-        setLoading(false);
-        return;
-      }
-
-      const trackMap = new Map((trackRows ?? []).map((t) => [t.id, t]));
-      const result = ids
-        .map((id) => trackMap.get(id))
-        .filter((t): t is NonNullable<typeof t> => t !== undefined)
-        .map((row) => {
-          const r = row as Record<string, unknown> & { artists: { name: string } | null; albums: { title: string; artwork_url: string | null } | null };
-          return {
-            id: r.id as string,
-            title: r.title as string,
-            artist: (r.artists as { name: string } | null)?.name ?? "Unknown artist",
-            album: (r.albums as { title: string; artwork_url: string | null } | null)?.title ?? "Unknown album",
-            artwork: (r.artwork_url as string | null) ?? (r.albums as { title: string; artwork_url: string | null } | null)?.artwork_url ?? "",
-            duration: r.duration as number,
-            ...((r.audio_url as string | null) ? { audioUrl: r.audio_url as string } : {}),
-          };
-        });
+      const result: Track[] = liked.map((row) => ({
+        id: row.track_id,
+        title: row.title || "Untitled",
+        artist: row.artist || "Unknown artist",
+        album: "",
+        artwork: row.artwork,
+        duration: row.duration,
+      }));
       setTracks(result);
       setLoading(false);
     })();

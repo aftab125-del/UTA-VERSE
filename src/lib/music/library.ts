@@ -9,6 +9,14 @@ function getClient(client?: Client): Client {
   return client ?? createSupabaseBrowserClient();
 }
 
+/** Subset of Track fields we denormalize into junction tables. */
+interface TrackMeta {
+  title: string;
+  artist: string;
+  artwork: string;
+  duration: number;
+}
+
 // ── Liked tracks ──────────────────────────────────────────────────────────────
 
 export async function getLikedTracks(userId: string, client?: Client): Promise<LikedTrack[]> {
@@ -34,8 +42,14 @@ export async function isTrackLiked(userId: string, trackId: string, client?: Cli
 
 /**
  * Toggle like status for a track. Returns the new liked state (true = liked, false = unliked).
+ * Stores track metadata at write time so the Liked Songs page never needs to join the tracks table.
  */
-export async function toggleLikeTrack(userId: string, trackId: string, client?: Client): Promise<boolean> {
+export async function toggleLikeTrack(
+  userId: string,
+  trackId: string,
+  meta: TrackMeta,
+  client?: Client,
+): Promise<boolean> {
   const supabase = getClient(client);
   const { data: existing, error: fetchError } = await supabase
     .from("liked_tracks")
@@ -57,7 +71,14 @@ export async function toggleLikeTrack(userId: string, trackId: string, client?: 
 
   const { error: insertError } = await supabase
     .from("liked_tracks")
-    .insert({ user_id: userId, track_id: trackId });
+    .insert({
+      user_id: userId,
+      track_id: trackId,
+      title: meta.title,
+      artist: meta.artist,
+      artwork: meta.artwork,
+      duration: meta.duration,
+    });
   if (insertError) throw new Error(`Unable to like track: ${insertError.message}`);
   return true;
 }
@@ -78,56 +99,52 @@ export async function getLikedTrackIds(userId: string, trackIds: string[], clien
 }
 
 /**
- * Get full Track objects for all liked tracks (for the Liked Songs page).
+ * Get full Track objects for all liked tracks — constructed entirely from
+ * denormalized metadata stored in the liked_tracks row (no catalog join).
  */
 export async function getLikedTracksWithDetails(userId: string, client?: Client, limit = 100): Promise<Track[]> {
-  const supabase = getClient(client);
-  const { data: liked, error: likedError } = await supabase
+  const { data: liked, error: likedError } = await getClient(client)
     .from("liked_tracks")
-    .select("track_id")
+    .select("track_id, title, artist, artwork, duration")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (likedError) throw new Error(`Unable to load liked tracks: ${likedError.message}`);
   if (liked.length === 0) return [];
 
-  const trackIds = liked.map((row) => row.track_id);
-  const { data: tracks, error: tracksError } = await supabase
-    .from("tracks")
-    .select("*, artists(name), albums(title, artwork_url)")
-    .in("id", trackIds);
-  if (tracksError) throw new Error(`Unable to load tracks: ${tracksError.message}`);
-
-  // Preserve the like order (most recently liked first)
-  const trackMap = new Map(tracks.map((t) => [t.id, t]));
-  return trackIds
-    .map((id) => trackMap.get(id))
-    .filter((t): t is NonNullable<typeof t> => t !== undefined)
-    .map((row) => {
-      const r = row as Record<string, unknown> & { artists: { name: string } | null; albums: { title: string; artwork_url: string | null } | null };
-      return {
-        id: r.id as string,
-        title: r.title as string,
-        artist: (r.artists as { name: string } | null)?.name ?? "Unknown artist",
-        album: (r.albums as { title: string; artwork_url: string | null } | null)?.title ?? "Unknown album",
-        artwork: (r.artwork_url as string | null) ?? (r.albums as { title: string; artwork_url: string | null } | null)?.artwork_url ?? "",
-        duration: r.duration as number,
-        ...((r.audio_url as string | null) ? { audioUrl: r.audio_url as string } : {}),
-      };
-    });
+  return liked.map((row) => ({
+    id: row.track_id,
+    title: row.title || "Untitled",
+    artist: row.artist || "Unknown artist",
+    album: "",
+    artwork: row.artwork,
+    duration: row.duration,
+  }));
 }
 
 // ── Listening history ─────────────────────────────────────────────────────────
 
+/**
+ * Record a listening event with denormalized track metadata.
+ */
 export async function recordListeningHistory(
   userId: string,
   trackId: string,
+  meta: TrackMeta,
   progressMs = 0,
   client?: Client,
 ): Promise<void> {
   const { error } = await getClient(client)
     .from("listening_history")
-    .insert({ user_id: userId, track_id: trackId, progress_ms: progressMs });
+    .insert({
+      user_id: userId,
+      track_id: trackId,
+      progress_ms: progressMs,
+      title: meta.title,
+      artist: meta.artist,
+      artwork: meta.artwork,
+      duration: meta.duration,
+    });
   if (error) throw new Error(`Unable to record listening history: ${error.message}`);
 }
 
@@ -157,35 +174,37 @@ export async function getRecentlyPlayed(userId: string, client?: Client, limit =
 }
 
 /**
- * Get full Track objects for recently played tracks.
+ * Get full Track objects for recently played tracks — constructed entirely
+ * from denormalized metadata (no catalog join).
  */
 export async function getRecentlyPlayedWithDetails(userId: string, client?: Client, limit = 50): Promise<Track[]> {
-  const history = await getRecentlyPlayed(userId, client, limit);
+  const { data: history, error: historyError } = await getClient(client)
+    .from("listening_history")
+    .select("track_id, title, artist, artwork, duration, played_at")
+    .eq("user_id", userId)
+    .order("played_at", { ascending: false })
+    .limit(limit * 3);
+  if (historyError) throw new Error(`Unable to load listening history: ${historyError.message}`);
   if (history.length === 0) return [];
 
-  const trackIds = history.map((h) => h.trackId);
-  const { data: tracks, error } = await getClient(client)
-    .from("tracks")
-    .select("*, artists(name), albums(title, artwork_url)")
-    .in("id", trackIds);
-  if (error) throw new Error(`Unable to load tracks: ${error.message}`);
-
-  const trackMap = new Map(tracks.map((t) => [t.id, t]));
-  return trackIds
-    .map((id) => trackMap.get(id))
-    .filter((t): t is NonNullable<typeof t> => t !== undefined)
-    .map((row) => {
-      const r = row as Record<string, unknown> & { artists: { name: string } | null; albums: { title: string; artwork_url: string | null } | null };
-      return {
-        id: r.id as string,
-        title: r.title as string,
-        artist: (r.artists as { name: string } | null)?.name ?? "Unknown artist",
-        album: (r.albums as { title: string; artwork_url: string | null } | null)?.title ?? "Unknown album",
-        artwork: (r.artwork_url as string | null) ?? (r.albums as { title: string; artwork_url: string | null } | null)?.artwork_url ?? "",
-        duration: r.duration as number,
-        ...((r.audio_url as string | null) ? { audioUrl: r.audio_url as string } : {}),
-      };
-    });
+  // Deduplicate by track_id, keeping the most recent entry
+  const seen = new Set<string>();
+  const deduped: Track[] = [];
+  for (const row of history) {
+    if (!seen.has(row.track_id)) {
+      seen.add(row.track_id);
+      deduped.push({
+        id: row.track_id,
+        title: row.title || "Untitled",
+        artist: row.artist || "Unknown artist",
+        album: "",
+        artwork: row.artwork,
+        duration: row.duration,
+      });
+    }
+    if (deduped.length >= limit) break;
+  }
+  return deduped;
 }
 
 export async function clearListeningHistory(userId: string, client?: Client): Promise<void> {

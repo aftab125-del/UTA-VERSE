@@ -158,7 +158,7 @@ function isCurrentRequest(requestId: number, track: Track, get: () => PlayerStat
   return requestId === playbackRequestId && get().currentTrack?.id === track.id;
 }
 
-async function recordHistory(trackId: string) {
+async function recordHistory(trackId: string, meta: { title: string; artist: string; artwork: string; duration: number }) {
   const now = Date.now();
   const lastRecorded = historyCooldown.get(trackId) ?? 0;
   if (now - lastRecorded < 30_000) return;
@@ -167,7 +167,7 @@ async function recordHistory(trackId: string) {
     const supabase = createSupabaseBrowserClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await recordListeningHistory(user.id, trackId, 0, supabase);
+    await recordListeningHistory(user.id, trackId, meta, 0, supabase);
   } catch (err) {
     console.error("[PlayerStore] Failed to record listening history", { trackId, err });
   }
@@ -224,7 +224,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
         onReady: (duration) => set({ duration, isLoading: false, isResolving: false }),
         onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
-        onPlaying: () => { set({ isPlaying: true, isLoading: false, isResolving: false, error: null }); setMediaSessionPlaybackState("playing"); void recordHistory(track.id); },
+        onPlaying: () => { set({ isPlaying: true, isLoading: false, isResolving: false, error: null }); setMediaSessionPlaybackState("playing"); void recordHistory(track.id, { title: track.title, artist: track.artist, artwork: track.artwork, duration: track.duration }); },
         onPaused: () => { set({ isPlaying: false }); setMediaSessionPlaybackState("paused"); },
         onEnded: () => {
           const { repeatMode } = get();

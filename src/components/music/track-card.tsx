@@ -39,7 +39,7 @@ export function TrackCard({ track, variant = "row" }: TrackCardProps) {
           <span>{track.album}</span>
         </div>
         <div className="track-card__actions">
-          <LikeButton trackId={track.id} />
+          <LikeButton track={track} />
           <AddToPlaylistButton track={track} />
           <span className="track-card__duration">{formatDuration(track.duration)}</span>
         </div>
