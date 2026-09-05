@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { useUser } from "@/app/library/components/use-library";
+import { useUser } from "@/hooks/use-user";
 
 interface CreatePlaylistModalProps {
   open: boolean;

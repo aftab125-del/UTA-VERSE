@@ -7,7 +7,6 @@ const navigationItems = [
   { href: "/", label: "Home", icon: "⌂" },
   { href: "/discover", label: "Discover", icon: "✦" },
   { href: "/search", label: "Search", icon: "⌕" },
-  { href: "/library", label: "Library", icon: "▤" },
   { href: "/playlists", label: "Playlists", icon: "≡" },
 ];
 

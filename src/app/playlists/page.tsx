@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppShell } from "@/components/shell/app-shell";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { PlaylistsGrid } from "@/components/playlist/playlists-grid";
+import { PlaylistsPageContent } from "@/components/playlist/playlists-page-content";
 
 export default async function PlaylistsPage() {
   const supabase = await createSupabaseServerClient();
@@ -15,7 +15,7 @@ export default async function PlaylistsPage() {
         <p className="route-lede">Create and arrange personal listening spaces.</p>
 
         {user ? (
-          <PlaylistsGrid userId={user.id} />
+          <PlaylistsPageContent userId={user.id} />
         ) : (
           <>
             <div className="empty-panel catalog-state">

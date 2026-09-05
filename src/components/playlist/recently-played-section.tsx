@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useUser } from "@/app/library/components/use-library";
+import { useUser } from "@/hooks/use-user";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { usePlayerStore } from "@/stores/player-store";
 import type { Track } from "@/types/music";
 
-export function LikedSongs() {
+export function RecentlyPlayedSection() {
   const { user } = useUser();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const setTrack = usePlayerStore((s) => s.setTrack);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -20,19 +21,39 @@ export function LikedSongs() {
     if (!user) { setLoading(false); return; }
     let cancelled = false;
     (async () => {
-      const { data: liked } = await supabase
-        .from("liked_tracks")
+      const { data: history, error: historyError } = await supabase
+        .from("listening_history")
         .select("track_id")
         .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      if (cancelled || !liked || liked.length === 0) { setTracks([]); setLoading(false); return; }
+        .order("played_at", { ascending: false })
+        .limit(150);
+      if (cancelled) return;
+      if (historyError) {
+        console.error("[RecentlyPlayedSection] Failed to load history", historyError.message);
+        setError("Failed to load listening history.");
+        setLoading(false);
+        return;
+      }
+      if (!history || history.length === 0) { setTracks([]); setLoading(false); return; }
 
-      const ids = liked.map((l) => l.track_id);
-      const { data: trackRows } = await supabase
+      const seen = new Set<string>();
+      const ids: string[] = [];
+      for (const h of history) {
+        if (!seen.has(h.track_id)) { seen.add(h.track_id); ids.push(h.track_id); }
+        if (ids.length >= 50) break;
+      }
+
+      const { data: trackRows, error: tracksError } = await supabase
         .from("tracks")
         .select("*, artists(name), albums(title, artwork_url)")
         .in("id", ids);
       if (cancelled) return;
+      if (tracksError) {
+        console.error("[RecentlyPlayedSection] Failed to load tracks", tracksError.message);
+        setError("Failed to load track details.");
+        setLoading(false);
+        return;
+      }
 
       const trackMap = new Map((trackRows ?? []).map((t) => [t.id, t]));
       const result = ids
@@ -56,12 +77,21 @@ export function LikedSongs() {
     return () => { cancelled = true; };
   }, [user, supabase]);
 
+  if (!user) return (
+    <div className="empty-panel catalog-state">
+      <span className="empty-panel__mark" aria-hidden="true">↻</span>
+      <h2>Sign in to see listening history</h2>
+      <p>Tracks you play will show up here.</p>
+    </div>
+  );
+
   if (loading) return <div className="library-loading">Loading…</div>;
+  if (error) return <div className="empty-panel catalog-state"><span className="empty-panel__mark" aria-hidden="true">⚠</span><h2>Something went wrong</h2><p>{error}</p></div>;
   if (tracks.length === 0) return (
     <div className="empty-panel catalog-state">
-      <span className="empty-panel__mark" aria-hidden="true">♡</span>
-      <h2>Songs you like will appear here</h2>
-      <p>Save songs by tapping the heart icon.</p>
+      <span className="empty-panel__mark" aria-hidden="true">↻</span>
+      <h2>No listening history yet</h2>
+      <p>Tracks you play will show up here.</p>
     </div>
   );
 
@@ -70,13 +100,9 @@ export function LikedSongs() {
   }
 
   return (
-    <div className="liked-songs">
-      <div className="liked-songs__header">
-        <div className="liked-songs__gradient" />
-        <div className="liked-songs__info">
-          <h2>Liked Songs</h2>
-          <span>{tracks.length} song{tracks.length !== 1 ? "s" : ""}</span>
-        </div>
+    <div className="recently-played">
+      <div className="recently-played__header">
+        <h2>Recently Played</h2>
         <button type="button" className="liked-songs__play-btn" onClick={playAll}>
           ▶ Play
         </button>
