@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import type { PointerEvent, MouseEvent } from "react";
 import { gsap } from "gsap";
+import { TiltedCard } from "./TiltedCard";
 import "./ChromaGrid.css";
 
 export interface ChromaGridItem {
@@ -148,7 +149,12 @@ export function ChromaGrid({
           }
         >
           <div className="chroma-img-wrapper">
-            <img src={c.image} alt={c.title} loading="lazy" />
+            <TiltedCard
+              imageSrc={c.image}
+              altText={c.title}
+              showTooltip={false}
+              showMobileWarning={false}
+            />
             <div className="chroma-play-overlay" aria-hidden="true">
               <span className="chroma-play-badge">▶</span>
             </div>

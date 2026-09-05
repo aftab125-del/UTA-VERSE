@@ -57,12 +57,9 @@
   background: transparent;
 }
 
-.chroma-img-wrapper img {
+.chroma-img-wrapper .tilted-card-figure {
   width: 100%;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: var(--radius-sm, 0.5rem);
-  display: block;
 }
 
 .chroma-play-overlay {
