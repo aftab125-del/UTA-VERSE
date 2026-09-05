@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import { ArtworkTile } from "@/components/music/artwork-tile";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export function QueuePanel() {
   const [open, setOpen] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const dragIndex = useRef<number | null>(null);
 
@@ -77,7 +79,7 @@ export function QueuePanel() {
           <h2>Queue</h2>
           <div className="queue-panel__actions">
             {queue.length > 1 && (
-              <button type="button" className="queue-panel__clear" onClick={clearQueue}>
+              <button type="button" className="queue-panel__clear" onClick={() => setConfirmClear(true)}>
                 Clear
               </button>
             )}
@@ -104,6 +106,7 @@ export function QueuePanel() {
                     <strong>{currentTrack.title}</strong>
                     <span>{currentTrack.artist}</span>
                   </div>
+                  <span className="queue-item__duration">{formatDuration(currentTrack.duration)}</span>
                 </div>
               </div>
             )}
@@ -138,6 +141,7 @@ export function QueuePanel() {
                           <strong>{track.title}</strong>
                           <span>{track.artist}</span>
                         </div>
+                        <span className="queue-item__duration">{formatDuration(track.duration)}</span>
                         <button
                           type="button"
                           className="queue-item__remove"
@@ -155,6 +159,21 @@ export function QueuePanel() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear queue"
+        message="Are you sure you want to clear the queue? The currently playing track will remain."
+        confirmLabel="Clear"
+        danger
+        onConfirm={() => { clearQueue(); setConfirmClear(false); }}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   );
+}
+
+function formatDuration(seconds: number) {
+  if (!seconds) return "0:00";
+  return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 }

@@ -280,6 +280,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .queue-item__remove { border: 0; background: none; color: var(--color-muted); font-size: 0.7rem; cursor: pointer; padding: 0.2rem 0.3rem; border-radius: var(--radius-sm); opacity: 0; transition: opacity 160ms ease, color 160ms ease; flex: 0 0 auto; }
 .queue-item:hover .queue-item__remove { opacity: 1; }
 .queue-item__remove:hover { color: #ff9caa; }
+.queue-item__duration { flex: 0 0 auto; min-width: 2.5rem; text-align: right; color: var(--color-muted); font-size: 0.7rem; }
 
 /* ── Library tabs ───────────────────────────────────────────────────────────── */
 .library-loading { padding: 2rem; text-align: center; color: var(--color-muted); }
