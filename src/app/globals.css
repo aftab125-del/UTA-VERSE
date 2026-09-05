@@ -123,8 +123,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .youtube-result__thumbnail { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 0.35rem; }
 .youtube-result__icon { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: 50%; background: rgba(10, 10, 18, 0.82); color: var(--color-accent-bright); z-index: 6; pointer-events: none; transition: background 160ms ease, transform 160ms ease; }
 .youtube-result__button:hover .youtube-result__icon { transform: translate(-50%, -50%) scale(1.1); background: rgba(139, 92, 246, 0.88); }
-.youtube-result__details h3 { margin: 0; font-size: 0.95rem; }
-.youtube-result__details p { margin: 0.35rem 0 0; color: var(--color-muted); }
+.youtube-result__details { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.youtube-result__info { min-width: 0; }
+.youtube-result__info h3 { margin: 0; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.youtube-result__info p { margin: 0.35rem 0 0; color: var(--color-muted); }
+.youtube-result__actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
 .view-toggle { display: inline-flex; gap: 0.35rem; padding: 0.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
 .view-toggle__btn { padding: 0.3rem 0.65rem; border: 0; border-radius: calc(var(--radius-sm) - 2px); background: transparent; color: var(--color-muted); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: all 160ms ease; }
 .view-toggle__btn:hover { color: var(--color-ink); }

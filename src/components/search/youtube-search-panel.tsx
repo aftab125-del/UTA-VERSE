@@ -6,6 +6,7 @@ import type { Track } from "@/types/music";
 import { TiltedCard } from "@/components/reactbits/TiltedCard";
 import { BorderGlow } from "@/components/reactbits/BorderGlow";
 import { ChromaGrid } from "@/components/reactbits/ChromaGrid";
+import { LikeButton, AddToPlaylistButton } from "@/components/ui/track-actions";
 
 interface YouTubeResult {
   videoId: string;
@@ -237,9 +238,17 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
           <ChromaGrid items={chromaItems} />
         ) : (
           <div className="youtube-search__results">
-            {results.map((result) => (
-              <YouTubeResultCard key={result.videoId} result={result} onPlay={() => void setTrack(toTrack(result))} />
-            ))}
+            {results.map((result) => {
+              const track = toTrack(result);
+              return (
+                <YouTubeResultCard
+                  key={result.videoId}
+                  result={result}
+                  track={track}
+                  onPlay={() => void setTrack(track)}
+                />
+              );
+            })}
           </div>
         )
       )}
@@ -259,7 +268,7 @@ function toTrack(result: YouTubeResult): Track {
   };
 }
 
-function YouTubeResultCard({ result, onPlay }: { result: YouTubeResult; onPlay: () => void }) {
+function YouTubeResultCard({ result, track, onPlay }: { result: YouTubeResult; track: Track; onPlay: () => void }) {
   const currentTrack = usePlayerStore((state) => state.currentTrack);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const isCurrent = currentTrack?.id === `youtube:${result.videoId}`;
@@ -280,8 +289,14 @@ function YouTubeResultCard({ result, onPlay }: { result: YouTubeResult; onPlay: 
         <span className="youtube-result__icon" aria-hidden="true">{isCurrent && isPlaying ? "Ⅱ" : "▶"}</span>
       </button>
       <div className="youtube-result__details">
-        <h3>{result.title}</h3>
-        <p>{result.channelTitle}</p>
+        <div className="youtube-result__info">
+          <h3>{result.title}</h3>
+          <p>{result.channelTitle}</p>
+        </div>
+        <div className="youtube-result__actions">
+          <LikeButton track={track} size="small" />
+          <AddToPlaylistButton track={track} />
+        </div>
       </div>
     </article>
   );
@@ -301,4 +316,3 @@ function YouTubeResultCard({ result, onPlay }: { result: YouTubeResult; onPlay: 
 
   return card;
 }
-

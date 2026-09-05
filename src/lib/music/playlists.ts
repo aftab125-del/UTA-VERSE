@@ -11,30 +11,17 @@ function getClient(client?: Client): Client {
 
 type PlaylistRow = Tables<"playlists">;
 type PlaylistTrackRow = Tables<"playlist_tracks">;
-type TrackRow = Tables<"tracks">;
 
-type TrackWithRelations = TrackRow & {
-  artists: { name: string } | null;
-  albums: { title: string; artwork_url: string | null } | null;
-};
-
-function mapTrack(row: TrackWithRelations): Track {
-  return {
-    id: row.id,
-    title: row.title,
-    artist: row.artists?.name ?? "Unknown artist",
-    album: row.albums?.title ?? "Unknown album",
-    artwork: row.artwork_url ?? row.albums?.artwork_url ?? "",
-    duration: row.duration,
-    ...(row.audio_url ? { audioUrl: row.audio_url } : {}),
-  };
+/** Subset of Track fields we denormalize into playlist_tracks. */
+interface TrackMeta {
+  title: string;
+  artist: string;
+  artwork: string;
+  duration: number;
 }
 
-function mapPlaylist(row: PlaylistRow & { playlist_tracks: { count: number }[]; tracks?: TrackWithRelations[] }): Playlist {
+function mapPlaylist(row: PlaylistRow & { playlist_tracks: { count: number }[] }): Playlist {
   const trackCount = row.playlist_tracks[0]?.count ?? 0;
-  const totalDuration = row.tracks
-    ? row.tracks.reduce((sum, t) => sum + (t.duration ?? 0), 0)
-    : 0;
   return {
     id: row.id,
     userId: row.user_id,
@@ -44,7 +31,7 @@ function mapPlaylist(row: PlaylistRow & { playlist_tracks: { count: number }[]; 
     folderId: row.folder_id,
     isPublic: row.is_public,
     trackCount,
-    totalDuration,
+    totalDuration: 0,
     createdAt: row.created_at,
   };
 }
@@ -71,6 +58,10 @@ export async function getPlaylistById(playlistId: string, client?: Client): Prom
   return data ? mapPlaylist(data) : null;
 }
 
+/**
+ * Load a playlist and its tracks. Track objects are constructed entirely
+ * from denormalized metadata stored in playlist_tracks — no catalog join.
+ */
 export async function getPlaylistWithTracks(playlistId: string, client?: Client): Promise<PlaylistWithTracks | null> {
   const supabase = getClient(client);
   const { data: playlist, error: playlistError } = await supabase
@@ -83,26 +74,19 @@ export async function getPlaylistWithTracks(playlistId: string, client?: Client)
 
   const { data: playlistTracks, error: ptError } = await supabase
     .from("playlist_tracks")
-    .select("track_id, position")
+    .select("track_id, position, title, artist, artwork, duration")
     .eq("playlist_id", playlistId)
     .order("position", { ascending: true });
   if (ptError) throw new Error(`Unable to load playlist tracks: ${ptError.message}`);
 
-  let tracks: Track[] = [];
-  if (playlistTracks.length > 0) {
-    const trackIds = playlistTracks.map((pt) => pt.track_id);
-    const { data: trackRows, error: tracksError } = await supabase
-      .from("tracks")
-      .select("*, artists(name), albums(title, artwork_url)")
-      .in("id", trackIds);
-    if (tracksError) throw new Error(`Unable to load tracks: ${tracksError.message}`);
-
-    const trackMap = new Map(trackRows.map((t) => [t.id, t]));
-    tracks = playlistTracks
-      .map((pt) => trackMap.get(pt.track_id))
-      .filter((t): t is NonNullable<typeof t> => t !== undefined)
-      .map((row) => mapTrack(row as unknown as TrackWithRelations));
-  }
+  const tracks: Track[] = (playlistTracks ?? []).map((pt) => ({
+    id: pt.track_id,
+    title: pt.title || "Untitled",
+    artist: pt.artist || "Unknown artist",
+    album: "",
+    artwork: pt.artwork,
+    duration: pt.duration,
+  }));
 
   const base = mapPlaylist(playlist);
   return { ...base, tracks };
@@ -163,6 +147,10 @@ export async function duplicatePlaylist(
       playlist_id: newPlaylist.id,
       track_id: track.id,
       position: index,
+      title: track.title,
+      artist: track.artist,
+      artwork: track.artwork,
+      duration: track.duration,
     }));
     const { error } = await supabase.from("playlist_tracks").insert(rows);
     if (error) throw new Error(`Unable to copy playlist tracks: ${error.message}`);
@@ -173,9 +161,14 @@ export async function duplicatePlaylist(
 
 // ── Playlist track management ─────────────────────────────────────────────────
 
+/**
+ * Add a track to a playlist. Stores title/artist/artwork/duration alongside
+ * the track_id so the playlist detail page never needs to join the tracks table.
+ */
 export async function addTrackToPlaylist(
   playlistId: string,
   trackId: string,
+  meta: TrackMeta,
   position?: number,
   client?: Client,
 ): Promise<void> {
@@ -195,7 +188,10 @@ export async function addTrackToPlaylist(
 
   const { error } = await supabase
     .from("playlist_tracks")
-    .upsert({ playlist_id: playlistId, track_id: trackId, position }, { onConflict: "playlist_id,track_id" });
+    .upsert(
+      { playlist_id: playlistId, track_id: trackId, position, ...meta },
+      { onConflict: "playlist_id,track_id" },
+    );
   if (error) throw new Error(`Unable to add track to playlist: ${error.message}`);
 }
 
@@ -212,6 +208,10 @@ export async function removeTrackFromPlaylist(
   if (error) throw new Error(`Unable to remove track from playlist: ${error.message}`);
 }
 
+/**
+ * Reorder tracks by updating positions in-place (no delete+reinsert that would
+ * lose denormalized metadata).
+ */
 export async function reorderPlaylistTracks(
   playlistId: string,
   trackIds: string[],
@@ -219,22 +219,18 @@ export async function reorderPlaylistTracks(
 ): Promise<void> {
   const supabase = getClient(client);
 
-  // Delete all existing rows and re-insert in new order
-  const { error: deleteError } = await supabase
-    .from("playlist_tracks")
-    .delete()
-    .eq("playlist_id", playlistId);
-  if (deleteError) throw new Error(`Unable to reorder playlist: ${deleteError.message}`);
+  // Update each track's position individually — avoids wiping metadata columns
+  const updates = trackIds.map((trackId, index) =>
+    supabase
+      .from("playlist_tracks")
+      .update({ position: index })
+      .eq("playlist_id", playlistId)
+      .eq("track_id", trackId),
+  );
 
-  if (trackIds.length > 0) {
-    const rows = trackIds.map((trackId, index) => ({
-      playlist_id: playlistId,
-      track_id: trackId,
-      position: index,
-    }));
-    const { error: insertError } = await supabase.from("playlist_tracks").insert(rows);
-    if (insertError) throw new Error(`Unable to reorder playlist: ${insertError.message}`);
-  }
+  const results = await Promise.all(updates);
+  const firstError = results.find((r) => r.error);
+  if (firstError?.error) throw new Error(`Unable to reorder playlist: ${firstError.error.message}`);
 }
 
 // ── Playlist folders ──────────────────────────────────────────────────────────

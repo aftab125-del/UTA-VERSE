@@ -6,11 +6,11 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Track } from "@/types/music";
 
 interface LikeButtonProps {
-  trackId: string;
+  track: Track;
   size?: "small" | "normal";
 }
 
-export function LikeButton({ trackId, size = "normal" }: LikeButtonProps) {
+export function LikeButton({ track, size = "normal" }: LikeButtonProps) {
   const { user } = useUser();
   const [isLiked, setIsLiked] = useState(false);
   const supabase = createSupabaseBrowserClient();
@@ -22,7 +22,7 @@ export function LikeButton({ trackId, size = "normal" }: LikeButtonProps) {
       .from("liked_tracks")
       .select("track_id")
       .eq("user_id", user.id)
-      .eq("track_id", trackId)
+      .eq("track_id", track.id)
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
@@ -30,7 +30,7 @@ export function LikeButton({ trackId, size = "normal" }: LikeButtonProps) {
         setIsLiked(data !== null);
       });
     return () => { cancelled = true; };
-  }, [user, trackId, supabase]);
+  }, [user, track.id, supabase]);
 
   const toggle = useCallback(async () => {
     if (!user) return;
@@ -42,19 +42,26 @@ export function LikeButton({ trackId, size = "normal" }: LikeButtonProps) {
           .from("liked_tracks")
           .delete()
           .eq("user_id", user.id)
-          .eq("track_id", trackId);
+          .eq("track_id", track.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("liked_tracks")
-          .insert({ user_id: user.id, track_id: trackId });
+          .insert({
+            user_id: user.id,
+            track_id: track.id,
+            title: track.title,
+            artist: track.artist,
+            artwork: track.artwork,
+            duration: track.duration,
+          });
         if (error) throw error;
       }
     } catch (err) {
       console.error("[LikeButton] toggle failed", err);
       setIsLiked(wasLiked);
     }
-  }, [user, isLiked, trackId, supabase]);
+  }, [user, isLiked, track, supabase]);
 
   if (!user) return null;
 
@@ -111,7 +118,18 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
 
     const { error } = await supabase
       .from("playlist_tracks")
-      .upsert({ playlist_id: playlistId, track_id: track.id, position }, { onConflict: "playlist_id,track_id" });
+      .upsert(
+        {
+          playlist_id: playlistId,
+          track_id: track.id,
+          position,
+          title: track.title,
+          artist: track.artist,
+          artwork: track.artwork,
+          duration: track.duration,
+        },
+        { onConflict: "playlist_id,track_id" },
+      );
     if (error) { console.error("[AddToPlaylist] insert failed", error.message); setToast(`Failed to add to ${playlistName}`); setTimeout(() => setToast(null), 3500); return; }
     setToast(`Added to ${playlistName}`);
     setOpen(false);
@@ -130,7 +148,15 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
     if (playlist) {
       const { error: trackError } = await supabase
         .from("playlist_tracks")
-        .insert({ playlist_id: playlist.id, track_id: track.id, position: 0 });
+        .insert({
+          playlist_id: playlist.id,
+          track_id: track.id,
+          position: 0,
+          title: track.title,
+          artist: track.artist,
+          artwork: track.artwork,
+          duration: track.duration,
+        });
       if (trackError) { console.error("[AddToPlaylist] add track failed", trackError.message); }
       setToast(`Created "${playlist.name}" and added track`);
       setOpen(false);

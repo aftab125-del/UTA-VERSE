@@ -104,12 +104,11 @@ export type Database = {
         ];
       };
       playlist_tracks: {
-        Row: { playlist_id: string; track_id: string; position: number };
-        Insert: { playlist_id: string; track_id: string; position: number };
-        Update: { playlist_id?: string; track_id?: string; position?: number };
+        Row: { playlist_id: string; track_id: string; position: number; title: string; artist: string; artwork: string; duration: number };
+        Insert: { playlist_id: string; track_id: string; position: number; title?: string; artist?: string; artwork?: string; duration?: number };
+        Update: { playlist_id?: string; track_id?: string; position?: number; title?: string; artist?: string; artwork?: string; duration?: number };
         Relationships: [
           { foreignKeyName: "playlist_tracks_playlist_id_fkey"; columns: ["playlist_id"]; isOneToOne: false; referencedRelation: "playlists"; referencedColumns: ["id"] },
-          { foreignKeyName: "playlist_tracks_track_id_fkey"; columns: ["track_id"]; isOneToOne: false; referencedRelation: "tracks"; referencedColumns: ["id"] },
         ];
       };
       profiles: {
@@ -119,20 +118,16 @@ export type Database = {
         Relationships: [];
       };
       liked_tracks: {
-        Row: { user_id: string; track_id: string; created_at: string };
-        Insert: { user_id: string; track_id: string; created_at?: string };
-        Update: { user_id?: string; track_id?: string; created_at?: string };
-        Relationships: [
-          { foreignKeyName: "liked_tracks_track_id_fkey"; columns: ["track_id"]; isOneToOne: false; referencedRelation: "tracks"; referencedColumns: ["id"] },
-        ];
+        Row: { user_id: string; track_id: string; created_at: string; title: string; artist: string; artwork: string; duration: number };
+        Insert: { user_id: string; track_id: string; created_at?: string; title?: string; artist?: string; artwork?: string; duration?: number };
+        Update: { user_id?: string; track_id?: string; created_at?: string; title?: string; artist?: string; artwork?: string; duration?: number };
+        Relationships: [];
       };
       listening_history: {
-        Row: { id: string; user_id: string; track_id: string; played_at: string; progress_ms: number };
-        Insert: { id?: string; user_id: string; track_id: string; played_at?: string; progress_ms?: number };
-        Update: { id?: string; user_id?: string; track_id?: string; played_at?: string; progress_ms?: number };
-        Relationships: [
-          { foreignKeyName: "listening_history_track_id_fkey"; columns: ["track_id"]; isOneToOne: false; referencedRelation: "tracks"; referencedColumns: ["id"] },
-        ];
+        Row: { id: string; user_id: string; track_id: string; played_at: string; progress_ms: number; title: string; artist: string; artwork: string; duration: number };
+        Insert: { id?: string; user_id: string; track_id: string; played_at?: string; progress_ms?: number; title?: string; artist?: string; artwork?: string; duration?: number };
+        Update: { id?: string; user_id?: string; track_id?: string; played_at?: string; progress_ms?: number; title?: string; artist?: string; artwork?: string; duration?: number };
+        Relationships: [];
       };
       playlist_folders: {
         Row: { id: string; user_id: string; name: string; position: number; created_at: string };
