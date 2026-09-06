@@ -1,5 +1,4 @@
 import { AppShell } from "@/components/shell/app-shell";
-import { DarkVeilBackground } from "@/components/visual/dark-veil-background";
 import { BlurText } from "@/components/reactbits/BlurText";
 import { YouTubeSearchPanel } from "@/components/search/youtube-search-panel";
 
@@ -11,7 +10,6 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <AppShell>
-      <DarkVeilBackground />
       <div className="route-content route-content--narrow">
         <p className="eyebrow">Tune the signal</p>
         <h1 className="route-title">

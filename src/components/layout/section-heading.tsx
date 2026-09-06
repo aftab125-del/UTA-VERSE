@@ -4,11 +4,12 @@ interface SectionHeadingProps {
   eyebrow?: string;
   title: string;
   href?: string;
+  align?: "left" | "center";
 }
 
-export function SectionHeading({ eyebrow, title, href }: SectionHeadingProps) {
+export function SectionHeading({ eyebrow, title, href, align = "left" }: SectionHeadingProps) {
   return (
-    <div className="section-heading">
+    <div className={`section-heading ${align === "center" ? "section-heading--center" : ""}`.trim()}>
       <div>
         {eyebrow ? <p className="section-heading__eyebrow">{eyebrow}</p> : null}
         <h2>{title}</h2>
