@@ -60,3 +60,9 @@ export interface ListeningHistoryEntry {
   playedAt: string;
   progressMs: number;
 }
+
+export interface TopArtist {
+  name: string;
+  count: number;
+  artwork?: string;
+}

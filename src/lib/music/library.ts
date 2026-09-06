@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Database } from "@/types/database";
-import type { LikedTrack, ListeningHistoryEntry, Track } from "@/types/music";
+import type { LikedTrack, ListeningHistoryEntry, TopArtist, Track } from "@/types/music";
 
 type Client = SupabaseClient<Database>;
 
@@ -213,4 +213,46 @@ export async function clearListeningHistory(userId: string, client?: Client): Pr
     .delete()
     .eq("user_id", userId);
   if (error) throw new Error(`Unable to clear listening history: ${error.message}`);
+}
+
+/**
+ * Derives top artists from the user's listening history by grouping tracks
+ * by artist, counting occurrences, and taking the top `limit`.
+ */
+export async function getTopArtists(
+  userId: string,
+  limit = 3,
+  client?: Client
+): Promise<TopArtist[]> {
+  const { data: history, error } = await getClient(client)
+    .from("listening_history")
+    .select("artist, artwork")
+    .eq("user_id", userId);
+
+  if (error) throw new Error(`Unable to load listening history for top artists: ${error.message}`);
+  if (!history || history.length === 0) return [];
+
+  const artistMap = new Map<string, { count: number; artwork?: string }>();
+  for (const entry of history) {
+    const artist = (entry.artist || "").trim();
+    if (!artist || artist.toLowerCase() === "unknown artist" || artist.toLowerCase() === "youtube") continue;
+    const existing = artistMap.get(artist);
+    if (existing) {
+      existing.count += 1;
+      if (!existing.artwork && entry.artwork) {
+        existing.artwork = entry.artwork;
+      }
+    } else {
+      artistMap.set(artist, {
+        count: 1,
+        artwork: entry.artwork || undefined,
+      });
+    }
+  }
+
+  const sorted = Array.from(artistMap.entries())
+    .map(([name, val]) => ({ name, count: val.count, artwork: val.artwork }))
+    .sort((a, b) => b.count - a.count);
+
+  return sorted.slice(0, limit);
 }
