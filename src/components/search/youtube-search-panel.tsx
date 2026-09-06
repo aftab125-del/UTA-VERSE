@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import type { Track } from "@/types/music";
-import { TiltedCard } from "@/components/reactbits/TiltedCard";
 import { BorderGlow } from "@/components/reactbits/BorderGlow";
 import { ChromaGrid } from "@/components/reactbits/ChromaGrid";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
@@ -281,15 +280,11 @@ function YouTubeResultCard({ result, track, onPlay }: { result: YouTubeResult; t
   const card = (
     <article className={`youtube-result${isCurrent ? " youtube-result--current" : ""}`}>
       <button type="button" className="youtube-result__button" onClick={onPlay} aria-label={`Play ${result.title} by ${result.channelTitle}`}>
-        <TiltedCard
-          imageSrc={result.thumbnail}
-          altText={result.title}
-          captionText={result.channelTitle}
-          containerWidth="100%"
-          containerHeight="100%"
-          imageWidth="100%"
-          imageHeight="100%"
-          showMobileWarning={false}
+        <img
+          src={result.thumbnail}
+          alt={result.title}
+          className="youtube-result__thumbnail"
+          loading="lazy"
         />
         <span className="youtube-result__icon" aria-hidden="true">{isCurrent && isPlaying ? "Ⅱ" : "▶"}</span>
       </button>

@@ -1,0 +1,287 @@
+/* ── Stats 14 Telemetry Dashboard Cards ───────────────────────────────────── */
+
+.dashboard-stats-section {
+  width: 100%;
+  margin-top: 1rem;
+  margin-bottom: 3.5rem;
+  position: relative;
+  z-index: 2;
+}
+
+.dashboard-stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-stats-header__title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dashboard-stats-header__eyebrow {
+  margin: 0;
+  color: var(--color-accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+.dashboard-stats-header__heading {
+  margin: 0;
+  font-size: clamp(1.4rem, 2.5vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--color-ink);
+}
+
+.dashboard-stats-header__window-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-accent-bright);
+  background: rgba(169, 139, 255, 0.12);
+  border: 1px solid rgba(169, 139, 255, 0.28);
+}
+
+.dashboard-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+  perspective: 1200px;
+}
+
+@media (max-width: 1080px) {
+  .dashboard-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── 3D Tilted Card Wrapper ──────────────────────────────────────────────── */
+.stats14-card-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 12.5rem;
+  cursor: pointer;
+  perspective: 1200px;
+  transform-style: preserve-3d;
+  user-select: none;
+}
+
+.stats14-card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 1.35rem 1.45rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 1.25rem;
+  background: rgba(16, 18, 30, 0.78);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(169, 139, 255, 0.22);
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.6),
+    0 2px 14px rgba(109, 40, 217, 0.15),
+    inset 0 1px 0 rgba(220, 216, 255, 0.2);
+  transform-style: preserve-3d;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+  overflow: visible;
+}
+
+.stats14-card:hover {
+  border-color: rgba(169, 139, 255, 0.45);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.75),
+    0 0 24px rgba(169, 139, 255, 0.28),
+    inset 0 1px 1px rgba(220, 216, 255, 0.35);
+}
+
+/* Card Header */
+.stats14-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  transform: translateZ(10px);
+}
+
+.stats14-card__label-group {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.stats14-card__icon {
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0.55rem;
+  background: rgba(169, 139, 255, 0.15);
+  border: 1px solid rgba(169, 139, 255, 0.3);
+  color: var(--color-accent-bright);
+  flex-shrink: 0;
+}
+
+.stats14-card__label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Trend & Delta Badges */
+.stats14-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 1rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stats14-badge--up {
+  background: rgba(74, 222, 128, 0.14);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  color: #86efac;
+}
+
+.stats14-badge--down {
+  background: rgba(248, 113, 113, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+}
+
+.stats14-badge--neutral {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--color-muted);
+}
+
+.stats14-badge--badge {
+  background: linear-gradient(135deg, rgba(169, 139, 255, 0.25), rgba(109, 40, 217, 0.35));
+  border: 1px solid rgba(169, 139, 255, 0.45);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(169, 139, 255, 0.25);
+}
+
+/* Card Value & Subtitle */
+.stats14-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.85rem;
+  transform: translateZ(16px);
+}
+
+.stats14-card__value {
+  font-size: clamp(1.6rem, 2.4vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--color-ink);
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats14-card__subtitle {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sparkline Container */
+.stats14-card__sparkline-box {
+  width: 100%;
+  height: 2.8rem;
+  margin-top: auto;
+  position: relative;
+  transform: translateZ(8px);
+}
+
+.stats14-sparkline-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.stats14-sparkline-area {
+  opacity: 0.25;
+}
+
+.stats14-sparkline-line {
+  stroke: #c4b5fd;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 5px rgba(169, 139, 255, 0.7));
+}
+
+.stats14-sparkline-dot {
+  fill: #e0e7ff;
+  stroke: #7c3aed;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px rgba(169, 139, 255, 0.9));
+}
+
+/* Zero / Empty State Card Notice */
+.dashboard-empty-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.5rem;
+  margin-top: 1.5rem;
+  border-radius: 1rem;
+  background: rgba(20, 20, 36, 0.65);
+  border: 1px solid rgba(169, 139, 255, 0.2);
+  backdrop-filter: blur(16px);
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-empty-banner__text {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.dashboard-empty-banner__icon {
+  font-size: 1.2rem;
+  color: var(--color-accent-bright);
+}
