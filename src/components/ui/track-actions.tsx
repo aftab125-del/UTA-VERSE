@@ -80,9 +80,10 @@ export function LikeButton({ track, size = "normal" }: LikeButtonProps) {
 
 interface AddToPlaylistButtonProps {
   track: Track;
+  renderTrigger?: (openModal: () => void) => React.ReactNode;
 }
 
-export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
+export function AddToPlaylistButton({ track, renderTrigger }: AddToPlaylistButtonProps) {
   const { user } = useUser();
   const [open, setOpen] = useState(false);
   const [playlists, setPlaylists] = useState<Array<{ id: string; name: string }>>([]);
@@ -171,14 +172,18 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
 
   return (
     <>
-      <button
-        type="button"
-        className="add-to-playlist-button"
-        onClick={(e) => { e.stopPropagation(); openModal(); }}
-        aria-label="Add to playlist"
-      >
-        +
-      </button>
+      {renderTrigger ? (
+        renderTrigger(openModal)
+      ) : (
+        <button
+          type="button"
+          className="add-to-playlist-button"
+          onClick={(e) => { e.stopPropagation(); openModal(); }}
+          aria-label="Add to playlist"
+        >
+          +
+        </button>
+      )}
 
       {open && (
         <div className="modal-overlay" role="dialog" aria-label="Add to playlist" onClick={() => setOpen(false)}>
@@ -228,9 +233,10 @@ export function AddToPlaylistButton({ track }: AddToPlaylistButtonProps) {
 interface AddToQueueButtonProps {
   track: Track;
   size?: "small" | "normal";
+  renderTrigger?: (addToQueue: () => void) => React.ReactNode;
 }
 
-export function AddToQueueButton({ track, size = "normal" }: AddToQueueButtonProps) {
+export function AddToQueueButton({ track, size = "normal", renderTrigger }: AddToQueueButtonProps) {
   const addToQueue = usePlayerStore((state) => state.addToQueue);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -242,17 +248,21 @@ export function AddToQueueButton({ track, size = "normal" }: AddToQueueButtonPro
 
   return (
     <>
-      <button
-        type="button"
-        className={`add-to-queue-button${size === "small" ? " add-to-queue-button--small" : ""}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          handleClick();
-        }}
-        aria-label="Add to queue"
-      >
-        +≡
-      </button>
+      {renderTrigger ? (
+        renderTrigger(handleClick)
+      ) : (
+        <button
+          type="button"
+          className={`add-to-queue-button${size === "small" ? " add-to-queue-button--small" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleClick();
+          }}
+          aria-label="Add to queue"
+        >
+          +≡
+        </button>
+      )}
 
       {toast && <div className="toast" role="status">{toast}</div>}
     </>

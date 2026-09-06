@@ -182,16 +182,40 @@ export function PlayerDock() {
                 {menuOpen && hasTrack && (
                   <div className="player-dock__menu" role="menu" aria-label="Playback options">
                     {currentTrack && (
-                      <div className="player-dock__menu-actions">
-                        <div className="player-dock__menu-item">
-                          <span>Add to playlist</span>
-                          <AddToPlaylistButton track={currentTrack} />
-                        </div>
-                        <div className="player-dock__menu-item">
-                          <span>Add to queue</span>
-                          <AddToQueueButton track={currentTrack} size="small" />
-                        </div>
-                      </div>
+                      <>
+                        <AddToPlaylistButton
+                          track={currentTrack}
+                          renderTrigger={(openModal) => (
+                            <button
+                              type="button"
+                              className="player-dock__menu-btn"
+                              onClick={() => {
+                                setMenuOpen(false);
+                                openModal();
+                              }}
+                            >
+                              <span className="player-dock__menu-icon">+</span>
+                              <span>Add to playlist</span>
+                            </button>
+                          )}
+                        />
+                        <AddToQueueButton
+                          track={currentTrack}
+                          renderTrigger={(addToQueue) => (
+                            <button
+                              type="button"
+                              className="player-dock__menu-btn"
+                              onClick={() => {
+                                setMenuOpen(false);
+                                addToQueue();
+                              }}
+                            >
+                              <span className="player-dock__menu-icon">+≡</span>
+                              <span>Add to queue</span>
+                            </button>
+                          )}
+                        />
+                      </>
                     )}
                     <div className="player-dock__menu-divider" />
                     <button

@@ -137,10 +137,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .player-dock {
   position: fixed;
   z-index: 10;
-  right: 1.5rem;
   bottom: 1.25rem;
-  left: calc(17rem + 1.5rem);
-  max-width: 58rem;
+  left: calc(17rem + (100vw - 17rem) / 2);
+  transform: translateX(-50%);
+  width: calc(100vw - 17rem - 3rem);
+  max-width: 54rem;
   min-height: 3.75rem;
   pointer-events: none;
   transition: all 240ms ease;
@@ -152,6 +153,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   width: 100% !important;
   height: 100% !important;
   border-radius: 1.5rem !important;
+  background: rgba(12, 14, 25, 0.8) !important;
+  backdrop-filter: blur(28px) saturate(1.8) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.1) !important;
+  border: 1px solid rgba(169, 139, 255, 0.28) !important;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.65), 0 2px 18px rgba(109, 40, 217, 0.25), inset 0 1px 0 rgba(220, 216, 255, 0.3) !important;
 }
 .player-dock__inner {
   width: 100%;
@@ -395,7 +401,13 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 @media (max-width: 900px) {
   .app-shell__sidebar { width: 13rem; }
   .app-shell__main { padding-left: 13rem; }
-  .player-dock { left: calc(13rem + 1rem); right: 1rem; }
+  .player-dock {
+    left: calc(13rem + (100vw - 13rem) / 2);
+    transform: translateX(-50%);
+    width: calc(100vw - 13rem - 2rem);
+    max-width: 48rem;
+    right: auto;
+  }
   .player-dock__inner { grid-template-columns: minmax(9rem, 12rem) 1fr auto; gap: 0.75rem; }
   .player-dock__volume { display: none; }
   .track-grid, .card-grid, .artist-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -413,7 +425,14 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .content-section { margin-top: 3rem; }
   .section-heading { align-items: start; flex-direction: column; }
   .track-grid, .card-grid, .artist-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .player-dock { right: 0.5rem; bottom: 0.5rem; left: 0.5rem; max-width: 100%; }
+  .player-dock {
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 1.25rem);
+    max-width: 100%;
+    right: auto;
+    bottom: 0.75rem;
+  }
   .player-dock__inner { grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 0.35rem 0.5rem; padding: 0.5rem 0.75rem; }
   .player-dock__track { grid-column: 1 / 2; grid-row: 1 / 2; }
   .player-dock__tools { grid-column: 2 / 3; grid-row: 1 / 2; }
