@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import type { PointerEvent, MouseEvent } from "react";
 import { gsap } from "gsap";
-import { TiltedCard } from "./TiltedCard";
+import { TiltWrapper } from "@/components/ui/tilt-wrapper";
 import "./ChromaGrid.css";
 
 export interface ChromaGridItem {
@@ -136,39 +136,46 @@ export function ChromaGrid({
       onPointerLeave={handleLeave}
     >
       {items.map((c, i) => (
-        <article
+        <TiltWrapper
           key={i}
-          className="chroma-card"
-          onMouseMove={handleCardMove}
-          onClick={() => handleCardClick(c, i)}
-          style={
+          className="chroma-card-tilt-wrapper"
+          innerClassName="chroma-card"
+          rotateAmplitude={12}
+          scaleOnHover={1.03}
+          innerStyle={
             {
               "--card-border": c.borderColor || "#8b5cf6",
               "--card-gradient": c.gradient || "linear-gradient(145deg, #18142c, #06070b)",
             } as React.CSSProperties
           }
+          onClick={() => handleCardClick(c, i)}
         >
-          <div className="chroma-img-wrapper">
-            <TiltedCard
-              imageSrc={c.image}
-              altText={c.title}
-              showTooltip={false}
-              showMobileWarning={false}
-            />
-            <div className="chroma-play-overlay" aria-hidden="true">
-              <span className="chroma-play-badge">▶</span>
+          <div
+            className="chroma-card-content"
+            onMouseMove={handleCardMove}
+          >
+            <div className="chroma-img-wrapper">
+              <img
+                src={c.image}
+                alt={c.title}
+                className="chroma-img"
+                loading="lazy"
+              />
+              <div className="chroma-play-overlay" aria-hidden="true">
+                <span className="chroma-play-badge">▶</span>
+              </div>
             </div>
+            <footer className="chroma-info">
+              <h3 className="name">{c.title}</h3>
+              {c.subtitle && <p className="role">{c.subtitle}</p>}
+            </footer>
+            {renderCardOverlay && (
+              <div className="chroma-card-overlay" onClick={(e) => e.stopPropagation()}>
+                {renderCardOverlay(c, i)}
+              </div>
+            )}
           </div>
-          <footer className="chroma-info">
-            <h3 className="name">{c.title}</h3>
-            {c.subtitle && <p className="role">{c.subtitle}</p>}
-          </footer>
-          {renderCardOverlay && (
-            <div className="chroma-card-overlay" onClick={(e) => e.stopPropagation()}>
-              {renderCardOverlay(c, i)}
-            </div>
-          )}
-        </article>
+        </TiltWrapper>
       ))}
       {motionAllowed && (
         <>

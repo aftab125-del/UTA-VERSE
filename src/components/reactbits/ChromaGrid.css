@@ -7,30 +7,59 @@
   gap: 1rem;
   margin: 1.25rem 0;
   box-sizing: border-box;
+  perspective: 1200px;
 
   --x: 50%;
   --y: 50%;
   --r: 260px;
 }
 
+.chroma-card-tilt-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 1200px;
+  transform-style: preserve-3d;
+}
+
 .chroma-card {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-md, 0.875rem);
   border: 1px solid var(--color-border, rgba(220, 216, 255, 0.16));
-  transition: border-color 0.3s ease, transform 0.2s ease;
+  transition: border-color 0.3s ease, box-shadow 0.2s ease;
   background: var(--card-gradient, linear-gradient(145deg, #1f1438, #06070b));
   cursor: pointer;
+  transform-style: preserve-3d;
 
   --mouse-x: 50%;
   --mouse-y: 50%;
   --spotlight-color: rgba(169, 139, 255, 0.35);
 }
 
+.chroma-card-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transform-style: preserve-3d;
+}
+
+.chroma-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 0.5rem);
+}
+
 .chroma-card:hover {
   border-color: var(--card-border, #a98bff);
-  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 16px rgba(169, 139, 255, 0.25);
 }
 
 .chroma-card::before {
