@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
 import { useUser } from "@/hooks/use-user";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getTopArtists, getRecentlyPlayedWithDetails } from "@/lib/music/library";
@@ -139,22 +138,6 @@ export function DiscoverPageContent() {
 
   return (
     <div className="route-content discover-page">
-      {/* 1. Category Tab Row */}
-      <div className="discover-tabs-bar" role="navigation" aria-label="Music categories">
-        <Link href="/discover" className="discover-tab discover-tab--active" aria-current="page">
-          ✦ Discover
-        </Link>
-        <Link href="/playlists" className="discover-tab">
-          ≡ Playlists
-        </Link>
-        <Link href="/search" className="discover-tab">
-          ⌕ Artists
-        </Link>
-        <Link href="/search" className="discover-tab">
-          🔍 Search
-        </Link>
-      </div>
-
       <header className="discover-header">
         <p className="eyebrow">Open frequencies</p>
         <h1 className="route-title">
@@ -168,6 +151,7 @@ export function DiscoverPageContent() {
       {/* 2. Top 3 Artists Section */}
       <section className="content-section" aria-labelledby="top-artists-heading">
         <SectionHeading
+          align="center"
           eyebrow="Heavy rotation"
           title={userTopArtists.length >= 3 ? "Your Top Artists" : "Featured Artists"}
         />
@@ -181,6 +165,7 @@ export function DiscoverPageContent() {
       {/* 3. Trending Songs Section */}
       <section className="content-section" aria-labelledby="trending-songs-heading">
         <SectionHeading
+          align="center"
           eyebrow="Global signals"
           title="Trending Songs"
         />
@@ -245,6 +230,7 @@ export function DiscoverPageContent() {
       {recentlyPlayed.length > 0 && (
         <section className="content-section" aria-labelledby="recent-heading">
           <SectionHeading
+            align="center"
             eyebrow="Listening history"
             title="Jump Back In"
           />

@@ -68,29 +68,34 @@ export function PlayerDock() {
           className="player-dock__glass"
         >
           <div className="player-dock__inner">
-            {/* Left: Track metadata & Like button */}
-            <div className="player-dock__track">
-              {currentTrack ? (
-                <ArtworkTile artwork={currentTrack.artwork} title={currentTrack.title} size="small" />
-              ) : (
-                <div className="player-dock__empty-art" aria-hidden="true" />
-              )}
-              <div className="player-dock__metadata">
-                <strong title={currentTrack?.title ?? "Choose something to play"}>
-                  {currentTrack?.title ?? "Choose something to play"}
-                </strong>
-                <span
-                  className={error ? "player-dock__error" : undefined}
-                  title={error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Ready")}
-                >
-                  {error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Ready")}
-                </span>
-              </div>
+            {/* Left: Quick actions */}
+            <div className="player-dock__left">
               {currentTrack && <LikeButton track={currentTrack} size="small" />}
             </div>
 
-            {/* Center: Transport & Horizontal Seek Timeline */}
+            {/* Center: Track info on top of Play/Pause + Transport & Timeline */}
             <div className="player-dock__center">
+              {/* Centered Track Info: Cover + Title + Artist */}
+              <div className="player-dock__track">
+                {currentTrack ? (
+                  <ArtworkTile artwork={currentTrack.artwork} title={currentTrack.title} size="small" />
+                ) : (
+                  <div className="player-dock__empty-art" aria-hidden="true" />
+                )}
+                <div className="player-dock__metadata">
+                  <strong title={currentTrack?.title ?? "Choose something to play"}>
+                    {currentTrack?.title ?? "Choose something to play"}
+                  </strong>
+                  <span
+                    className={error ? "player-dock__error" : undefined}
+                    title={error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Ready")}
+                  >
+                    {error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Ready")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Transport Buttons */}
               <div className="player-dock__transport">
                 <button
                   type="button"
@@ -120,6 +125,8 @@ export function PlayerDock() {
                   ▶▶
                 </button>
               </div>
+
+              {/* Horizontal Seek Timeline */}
               <div className="player-dock__timeline">
                 <span className="player-dock__time">{formatTime(position)}</span>
                 <input
