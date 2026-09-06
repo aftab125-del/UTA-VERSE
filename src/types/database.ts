@@ -135,6 +135,12 @@ export type Database = {
         Update: { id?: string; user_id?: string; name?: string; position?: number; created_at?: string };
         Relationships: [];
       };
+      trending_cache: {
+        Row: { id: string; query: string; results: Json; fetched_at: string };
+        Insert: { id?: string; query: string; results?: Json; fetched_at?: string };
+        Update: { id?: string; query?: string; results?: Json; fetched_at?: string };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

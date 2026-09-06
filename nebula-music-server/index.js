@@ -763,14 +763,26 @@ app.get('/search', async (req, res) => {
 // -----------------------------------------------------------------------------
 
 const TRENDING_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const TRENDING_CACHE_KEY = 'global_trending';
+const TRENDING_CACHE_KEY = 'global_trending_v2';
 const TRENDING_QUERIES = [
-  'Top Songs 2026',
-  'Trending Hits Music',
-  'Global Viral Music',
-  'Top Charts Music',
-  'Hot New Music Hits',
+  'The Weeknd official music video',
+  'Billie Eilish official music video',
+  'Taylor Swift official music video',
+  'Dua Lipa official music video',
+  'Bruno Mars Lady Gaga official music video',
+  'Sabrina Carpenter official music video',
+  'Post Malone official music video',
+  'Kendrick Lamar official audio',
+  'SZA official music video',
+  'Olivia Rodrigo official music video',
 ];
+
+const SPAM_COMPILATION_REGEX = /\b(mix|top\s*\d+|non\s*stop|nonstop|compilation|playlist|full\s*album|full\s*tracklist|mashup|megamix|\d+\s*hours?|best\s*songs|greatest\s*hits|jukebox|audio\s*jukebox|all\s*songs|collection)\b|[~〜]/i;
+
+function isPlayableSingleTrack(track) {
+  if (!track || !track.title || !track.videoId) return false;
+  return !SPAM_COMPILATION_REGEX.test(track.title);
+}
 
 async function searchYouTubeForTrending(query, apiKey) {
   const params = new URLSearchParams({
@@ -803,7 +815,7 @@ async function searchYouTubeForTrending(query, apiKey) {
           ? item.snippet.thumbnails.default.url
           : '',
     }))
-    .filter((item) => item.videoId && item.title);
+    .filter((item) => item.videoId && item.title && isPlayableSingleTrack(item));
 }
 
 app.get('/trending', async (req, res) => {
@@ -824,11 +836,14 @@ app.get('/trending', async (req, res) => {
         const hasResults = Array.isArray(data.results) && data.results.length > 0;
 
         if (isFresh && hasResults) {
-          console.info('[Trending] Serving fresh trending cache', {
-            trackCount: data.results.length,
-            ageMinutes: Math.round((Date.now() - fetchedTime) / 60000),
-          });
-          return res.json(data.results);
+          const cleanResults = data.results.filter(isPlayableSingleTrack);
+          if (cleanResults.length > 0) {
+            console.info('[Trending] Serving fresh trending cache', {
+              trackCount: cleanResults.length,
+              ageMinutes: Math.round((Date.now() - fetchedTime) / 60000),
+            });
+            return res.json(cleanResults);
+          }
         }
       }
     }
@@ -837,7 +852,7 @@ app.get('/trending', async (req, res) => {
     if (!apiKey) {
       if (cachedRow?.results && Array.isArray(cachedRow.results)) {
         console.warn('[Trending] YOUTUBE_API_KEY missing, serving stale cache');
-        return res.json(cachedRow.results);
+        return res.json(cachedRow.results.filter(isPlayableSingleTrack));
       }
       return res.status(500).json({ error: 'Trending search is not configured.' });
     }
@@ -853,7 +868,7 @@ app.get('/trending', async (req, res) => {
     for (const result of searchResults) {
       if (result.status === 'fulfilled' && Array.isArray(result.value)) {
         for (const track of result.value) {
-          if (!seenIds.has(track.videoId)) {
+          if (!seenIds.has(track.videoId) && isPlayableSingleTrack(track)) {
             seenIds.add(track.videoId);
             combined.push(track);
           }
@@ -884,7 +899,7 @@ app.get('/trending', async (req, res) => {
     // Fallback to stale cache if YouTube yielded no results
     if (cachedRow?.results && Array.isArray(cachedRow.results)) {
       console.warn('[Trending] Search yielded 0 results, falling back to stale cache');
-      return res.json(cachedRow.results);
+      return res.json(cachedRow.results.filter(isPlayableSingleTrack));
     }
 
     return res.json([]);
