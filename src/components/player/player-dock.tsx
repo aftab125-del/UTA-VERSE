@@ -4,6 +4,7 @@ import { ArtworkTile } from "@/components/music/artwork-tile";
 import { usePlayerStore } from "@/stores/player-store";
 import { QueuePanel } from "@/components/player/queue-panel";
 import { LikeButton } from "@/components/ui/track-actions";
+import { GlassSurface } from "@/components/reactbits/GlassSurface";
 
 export function PlayerDock() {
   const currentTrack = usePlayerStore((state) => state.currentTrack);
@@ -43,45 +44,59 @@ export function PlayerDock() {
   return (
     <>
       <footer className="player-dock" aria-label="Music player">
-        <div className="player-dock__track">
-          {currentTrack ? <ArtworkTile artwork={currentTrack.artwork} title={currentTrack.title} size="small" /> : <div className="player-dock__empty-art" aria-hidden="true" />}
-          <div className="player-dock__metadata">
-            <strong>{currentTrack?.title ?? "Choose something to play"}</strong>
-            <span className={error ? "player-dock__error" : undefined}>{error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Your player is ready")}</span>
-          </div>
-          {currentTrack && <LikeButton track={currentTrack} size="small" />}
-        </div>
+        <GlassSurface
+          width="100%"
+          height="100%"
+          borderRadius={20}
+          backgroundOpacity={0.12}
+          saturation={1.6}
+          displace={0.5}
+          blur={12}
+          distortionScale={-180}
+          className="player-dock__glass"
+        >
+          <div className="player-dock__inner">
+            <div className="player-dock__track">
+              {currentTrack ? <ArtworkTile artwork={currentTrack.artwork} title={currentTrack.title} size="small" /> : <div className="player-dock__empty-art" aria-hidden="true" />}
+              <div className="player-dock__metadata">
+                <strong>{currentTrack?.title ?? "Choose something to play"}</strong>
+                <span className={error ? "player-dock__error" : undefined}>{error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Your player is ready")}</span>
+              </div>
+              {currentTrack && <LikeButton track={currentTrack} size="small" />}
+            </div>
 
-        <div className="player-dock__transport">
-          <div className="player-dock__buttons">
-            <button type="button" className={`icon-button${isShuffled ? " icon-button--active" : ""}`} onClick={() => setShuffled(!isShuffled)} disabled={!hasTrack} aria-label={isShuffled ? "Disable shuffle" : "Enable shuffle"}>
-              ⇄
-            </button>
-            <button type="button" className="icon-button" onClick={previous} disabled={!hasTrack} aria-label="Previous track">
-              ◀◀
-            </button>
-            <button type="button" className="player-dock__play-button" onClick={() => void togglePlayPause()} disabled={!hasTrack || isResolving || isLoading} aria-label={isPlaying ? "Pause" : "Play"}>
-              {isPlaying ? "Ⅱ" : "▶"}
-            </button>
-            <button type="button" className="icon-button" onClick={next} disabled={!hasTrack} aria-label="Next track">
-              ▶▶
-            </button>
-            <button type="button" className={`icon-button${repeatMode !== "off" ? " icon-button--active" : ""}`} onClick={cycleRepeat} disabled={!hasTrack} aria-label={`Repeat: ${repeatMode}`}>
-              {repeatMode === "one" ? "↻₁" : "↻"}
-            </button>
-          </div>
-          <div className="player-dock__progress-row">
-            <span>{formatTime(position)}</span>
-            <input type="range" min="0" max={duration || 1} value={Math.min(position, duration || 1)} onChange={(event) => seek(Number(event.target.value))} disabled={!hasTrack || isResolving || isLoading || duration <= 0} aria-label="Track progress" />
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
+            <div className="player-dock__transport">
+              <div className="player-dock__buttons">
+                <button type="button" className={`icon-button${isShuffled ? " icon-button--active" : ""}`} onClick={() => setShuffled(!isShuffled)} disabled={!hasTrack} aria-label={isShuffled ? "Disable shuffle" : "Enable shuffle"}>
+                  ⇄
+                </button>
+                <button type="button" className="icon-button" onClick={previous} disabled={!hasTrack} aria-label="Previous track">
+                  ◀◀
+                </button>
+                <button type="button" className="player-dock__play-button" onClick={() => void togglePlayPause()} disabled={!hasTrack || isResolving || isLoading} aria-label={isPlaying ? "Pause" : "Play"}>
+                  {isPlaying ? "Ⅱ" : "▶"}
+                </button>
+                <button type="button" className="icon-button" onClick={next} disabled={!hasTrack} aria-label="Next track">
+                  ▶▶
+                </button>
+                <button type="button" className={`icon-button${repeatMode !== "off" ? " icon-button--active" : ""}`} onClick={cycleRepeat} disabled={!hasTrack} aria-label={`Repeat: ${repeatMode}`}>
+                  {repeatMode === "one" ? "↻₁" : "↻"}
+                </button>
+              </div>
+              <div className="player-dock__progress-row">
+                <span>{formatTime(position)}</span>
+                <input type="range" min="0" max={duration || 1} value={Math.min(position, duration || 1)} onChange={(event) => seek(Number(event.target.value))} disabled={!hasTrack || isResolving || isLoading || duration <= 0} aria-label="Track progress" />
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
 
-        <div className="player-dock__tools">
-          <button type="button" className="icon-button" onClick={toggleMute} disabled={!hasTrack} aria-label={isMuted ? "Unmute" : "Mute"}>{isMuted ? "×" : "◖"}</button>
-          <input type="range" min="0" max="1" step="0.01" value={isMuted ? 0 : volume} onChange={(event) => setVolume(Number(event.target.value))} disabled={!hasTrack} aria-label="Volume" />
-          <button type="button" className="queue-button" disabled={!hasTrack} onClick={openQueue} aria-label={`Open queue, ${queue.length} tracks`}>Queue <span>{queue.length}</span></button>
-        </div>
+            <div className="player-dock__tools">
+              <button type="button" className="icon-button" onClick={toggleMute} disabled={!hasTrack} aria-label={isMuted ? "Unmute" : "Mute"}>{isMuted ? "×" : "◖"}</button>
+              <input type="range" min="0" max="1" step="0.01" value={isMuted ? 0 : volume} onChange={(event) => setVolume(Number(event.target.value))} disabled={!hasTrack} aria-label="Volume" />
+              <button type="button" className="queue-button" disabled={!hasTrack} onClick={openQueue} aria-label={`Open queue, ${queue.length} tracks`}>Queue <span>{queue.length}</span></button>
+            </div>
+          </div>
+        </GlassSurface>
       </footer>
       <QueuePanel />
     </>

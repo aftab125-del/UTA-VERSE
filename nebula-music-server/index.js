@@ -759,6 +759,142 @@ app.get('/search', async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
+// Trending endpoint (cached via Supabase)
+// -----------------------------------------------------------------------------
+
+const TRENDING_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const TRENDING_CACHE_KEY = 'global_trending';
+const TRENDING_QUERIES = [
+  'Top Songs 2026',
+  'Trending Hits Music',
+  'Global Viral Music',
+  'Top Charts Music',
+  'Hot New Music Hits',
+];
+
+async function searchYouTubeForTrending(query, apiKey) {
+  const params = new URLSearchParams({
+    part: 'snippet',
+    type: 'video',
+    videoCategoryId: '10',
+    maxResults: '10',
+    q: query,
+    key: apiKey,
+  });
+
+  const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`, {
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  return items
+    .map((item) => ({
+      videoId: typeof item?.id?.videoId === 'string' ? item.id.videoId : '',
+      title: typeof item?.snippet?.title === 'string' ? item.snippet.title : '',
+      channelTitle: typeof item?.snippet?.channelTitle === 'string' ? item.snippet.channelTitle : '',
+      thumbnail: typeof item?.snippet?.thumbnails?.high?.url === 'string'
+        ? item.snippet.thumbnails.high.url
+        : typeof item?.snippet?.thumbnails?.default?.url === 'string'
+          ? item.snippet.thumbnails.default.url
+          : '',
+    }))
+    .filter((item) => item.videoId && item.title);
+}
+
+app.get('/trending', async (req, res) => {
+  try {
+    let cachedRow = null;
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('trending_cache')
+        .select('results, fetched_at')
+        .eq('query', TRENDING_CACHE_KEY)
+        .maybeSingle();
+
+      if (!error && data) {
+        cachedRow = data;
+        const fetchedTime = new Date(data.fetched_at).getTime();
+        const isFresh = Date.now() - fetchedTime < TRENDING_CACHE_TTL_MS;
+        const hasResults = Array.isArray(data.results) && data.results.length > 0;
+
+        if (isFresh && hasResults) {
+          console.info('[Trending] Serving fresh trending cache', {
+            trackCount: data.results.length,
+            ageMinutes: Math.round((Date.now() - fetchedTime) / 60000),
+          });
+          return res.json(data.results);
+        }
+      }
+    }
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) {
+      if (cachedRow?.results && Array.isArray(cachedRow.results)) {
+        console.warn('[Trending] YOUTUBE_API_KEY missing, serving stale cache');
+        return res.json(cachedRow.results);
+      }
+      return res.status(500).json({ error: 'Trending search is not configured.' });
+    }
+
+    console.info('[Trending] Refreshing trending cache from YouTube queries');
+    const searchResults = await Promise.allSettled(
+      TRENDING_QUERIES.map((q) => searchYouTubeForTrending(q, apiKey))
+    );
+
+    const combined = [];
+    const seenIds = new Set();
+
+    for (const result of searchResults) {
+      if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+        for (const track of result.value) {
+          if (!seenIds.has(track.videoId)) {
+            seenIds.add(track.videoId);
+            combined.push(track);
+          }
+          if (combined.length >= 30) break;
+        }
+      }
+      if (combined.length >= 30) break;
+    }
+
+    if (combined.length > 0) {
+      if (supabase) {
+        const { error: upsertError } = await supabase
+          .from('trending_cache')
+          .upsert({
+            query: TRENDING_CACHE_KEY,
+            results: combined,
+            fetched_at: new Date().toISOString(),
+          }, { onConflict: 'query' });
+
+        if (upsertError) {
+          console.warn('[Trending] Failed to save cache:', upsertError.message);
+        }
+      }
+
+      return res.json(combined);
+    }
+
+    // Fallback to stale cache if YouTube yielded no results
+    if (cachedRow?.results && Array.isArray(cachedRow.results)) {
+      console.warn('[Trending] Search yielded 0 results, falling back to stale cache');
+      return res.json(cachedRow.results);
+    }
+
+    return res.json([]);
+  } catch (error) {
+    console.error('[Trending] Endpoint failed:', error.message);
+    return res.status(500).json({ error: 'Failed to retrieve trending tracks.' });
+  }
+});
+
+// -----------------------------------------------------------------------------
 // Start server
 // -----------------------------------------------------------------------------
 
