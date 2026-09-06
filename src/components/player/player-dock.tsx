@@ -65,11 +65,6 @@ export function PlayerDock() {
           width="100%"
           height="100%"
           borderRadius={24}
-          backgroundOpacity={0.15}
-          saturation={1.8}
-          displace={0.5}
-          blur={16}
-          distortionScale={-180}
           className="player-dock__glass"
         >
           <div className="player-dock__inner">
