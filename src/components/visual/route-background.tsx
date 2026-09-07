@@ -12,5 +12,5 @@ export function RouteBackground() {
     return <BallpitBackground key="ballpit-home-bg" />;
   }
 
-  return <DarkVeilBackground key="darkveil-route-bg" />;
+  return null;
 }
