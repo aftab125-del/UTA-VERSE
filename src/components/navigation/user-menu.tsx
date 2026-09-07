@@ -1,32 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useUser } from "@/hooks/use-user";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import type { User } from "@supabase/supabase-js";
 
 export function UserMenu() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, avatarUrl, displayName, loading } = useUser();
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [supabase]);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -46,37 +29,19 @@ export function UserMenu() {
     );
   }
 
-  const displayName =
-    user.user_metadata?.full_name ??
-    user.user_metadata?.name ??
-    user.email?.split("@")[0] ??
-    "User";
-  const avatarUrl: string | undefined =
-    user.user_metadata?.avatar_url ?? user.user_metadata?.picture;
-  const initials = displayName
-    .split(" ")
-    .map((w: string) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
   return (
     <div className="user-menu">
       <div className="user-menu__identity">
-        {avatarUrl ? (
-          <img
+        <Link href="/profile" className="user-menu__profile-link" title="View Profile">
+          <UserAvatar
+            avatarUrl={avatarUrl}
+            displayName={displayName}
             className="user-menu__avatar"
-            src={avatarUrl}
-            alt=""
-            width={32}
-            height={32}
           />
-        ) : (
-          <span className="user-menu__avatar user-menu__avatar--initials" aria-hidden="true">
-            {initials}
+          <span className="user-menu__name" title={displayName}>
+            {displayName}
           </span>
-        )}
-        <span className="user-menu__name" title={displayName}>{displayName}</span>
+        </Link>
         <button
           className="user-menu__signout"
           type="button"
