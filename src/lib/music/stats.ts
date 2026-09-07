@@ -391,3 +391,205 @@ function smoothSparkline(values: number[]): number[] {
     return Math.round((arr[i - 1] + val * 2 + arr[i + 1]) / 4);
   });
 }
+
+// ── All-Time Stats for User Profile ──────────────────────────────────────────
+
+export interface UserAllTimeStats {
+  hasHistory: boolean;
+  totalDurationSeconds: number;
+  totalDurationFormatted: string;
+  tracksPlayed: number;
+  uniqueArtistsCount: number;
+  accountAgeDays: number;
+  memberSinceFormatted: string;
+  topArtist: {
+    name: string;
+    count: number;
+    artwork?: string;
+  } | null;
+  items: StatItem[];
+}
+
+export async function getUserAllTimeStats(
+  userId: string,
+  userCreatedAt?: string,
+  client?: Client,
+): Promise<UserAllTimeStats> {
+  const supabase = getClient(client);
+
+  let createdAtStr = userCreatedAt;
+  if (!createdAtStr) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("created_at")
+        .eq("id", userId)
+        .maybeSingle();
+      createdAtStr = profile?.created_at;
+    } catch {
+      // Fallback
+    }
+  }
+
+  const createdDate = createdAtStr ? new Date(createdAtStr) : new Date();
+  const accountAgeDays = Math.max(1, Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const memberSinceFormatted = createdDate.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const { data: history, error } = await supabase
+    .from("listening_history")
+    .select("track_id, title, artist, artwork, duration, progress_ms, played_at")
+    .eq("user_id", userId)
+    .order("played_at", { ascending: true });
+
+  if (error || !history || history.length === 0) {
+    const dummySparkline = [0, 0, 0, 0, 0, 0, 0, 0];
+    return {
+      hasHistory: false,
+      totalDurationSeconds: 0,
+      totalDurationFormatted: "0m",
+      tracksPlayed: 0,
+      uniqueArtistsCount: 0,
+      accountAgeDays,
+      memberSinceFormatted,
+      topArtist: null,
+      items: [
+        {
+          id: "alltime-tracks",
+          label: "Total Tracks Played",
+          value: "0",
+          subtitle: "All-time listening history",
+          delta: { value: "All-Time", trend: "badge" },
+          sparkline: dummySparkline,
+          iconType: "track",
+        },
+        {
+          id: "alltime-duration",
+          label: "Total Listening Time",
+          value: "0m",
+          subtitle: "All-time sonic immersion",
+          delta: { value: "All-Time", trend: "badge" },
+          sparkline: dummySparkline,
+          iconType: "time",
+        },
+        {
+          id: "alltime-top-artist",
+          label: "All-Time Top Artist",
+          value: "None yet",
+          subtitle: "Start playing music to track",
+          delta: undefined,
+          sparkline: dummySparkline,
+          iconType: "artist",
+        },
+        {
+          id: "alltime-account-age",
+          label: "Account Age",
+          value: `${accountAgeDays} ${accountAgeDays === 1 ? "day" : "days"}`,
+          subtitle: `Orbiting since ${memberSinceFormatted}`,
+          delta: { value: "Explorer", trend: "badge" },
+          sparkline: [1, 2, 3, 4, 5, 6, 7, 8],
+          iconType: "streak",
+        },
+      ],
+    };
+  }
+
+  const tracksPlayed = history.length;
+  const totalDurationSeconds = history.reduce((sum, h) => {
+    const dur = h.duration > 0 ? h.duration : Math.round((h.progress_ms || 0) / 1000);
+    return sum + (dur > 0 ? dur : 180);
+  }, 0);
+  const totalDurationFormatted = formatDurationHoursMinutes(totalDurationSeconds);
+
+  const artistCounts = new Map<string, { count: number; artwork?: string }>();
+  for (const entry of history) {
+    const artist = (entry.artist || "").trim();
+    if (artist && artist.toLowerCase() !== "unknown artist" && artist.toLowerCase() !== "youtube") {
+      const existing = artistCounts.get(artist) || { count: 0, artwork: entry.artwork };
+      existing.count += 1;
+      if (!existing.artwork && entry.artwork) existing.artwork = entry.artwork;
+      artistCounts.set(artist, existing);
+    }
+  }
+
+  const sortedArtists = Array.from(artistCounts.entries()).sort((a, b) => b[1].count - a[1].count);
+  const topArtistEntry = sortedArtists[0];
+  const topArtist = topArtistEntry
+    ? { name: topArtistEntry[0], count: topArtistEntry[1].count, artwork: topArtistEntry[1].artwork }
+    : null;
+
+  const bucketCount = 8;
+  const bucketPlays = new Array<number>(bucketCount).fill(0);
+  const bucketDuration = new Array<number>(bucketCount).fill(0);
+  const bucketArtistPlays = new Array<number>(bucketCount).fill(0);
+
+  const firstPlayed = new Date(history[0].played_at).getTime();
+  const lastPlayed = Date.now();
+  const timeSpan = Math.max(1, lastPlayed - firstPlayed);
+
+  for (const h of history) {
+    const t = new Date(h.played_at).getTime();
+    const bucketIdx = Math.min(bucketCount - 1, Math.max(0, Math.floor(((t - firstPlayed) / timeSpan) * bucketCount)));
+    bucketPlays[bucketIdx] += 1;
+    const durSec = h.duration > 0 ? h.duration : Math.round((h.progress_ms || 0) / 1000);
+    bucketDuration[bucketIdx] += Math.round((durSec > 0 ? durSec : 180) / 60);
+    if (topArtist && (h.artist || "").trim().toLowerCase() === topArtist.name.toLowerCase()) {
+      bucketArtistPlays[bucketIdx] += 1;
+    }
+  }
+
+  const items: StatItem[] = [
+    {
+      id: "alltime-tracks",
+      label: "Total Tracks Played",
+      value: `${tracksPlayed}`,
+      subtitle: "All-time across all sessions",
+      delta: { value: "All-Time", trend: "badge" },
+      sparkline: bucketPlays,
+      iconType: "track",
+    },
+    {
+      id: "alltime-duration",
+      label: "Total Listening Time",
+      value: totalDurationFormatted,
+      subtitle: "All-time sonic immersion",
+      delta: { value: "All-Time", trend: "badge" },
+      sparkline: bucketDuration,
+      iconType: "time",
+    },
+    {
+      id: "alltime-top-artist",
+      label: "All-Time Top Artist",
+      value: topArtist ? topArtist.name : "None yet",
+      subtitle: topArtist ? `${topArtist.count} plays recorded` : "Play music to track",
+      delta: topArtist ? { value: "★ All-Time", trend: "badge" } : undefined,
+      sparkline: bucketArtistPlays,
+      iconType: "artist",
+    },
+    {
+      id: "alltime-account-age",
+      label: "Account Age",
+      value: `${accountAgeDays} ${accountAgeDays === 1 ? "day" : "days"}`,
+      subtitle: `In the UTA-VERSE since ${memberSinceFormatted}`,
+      delta: { value: "Explorer", trend: "badge" },
+      sparkline: [1, 2, 3, 4, 5, 6, 7, 8],
+      iconType: "streak",
+    },
+  ];
+
+  return {
+    hasHistory: true,
+    totalDurationSeconds,
+    totalDurationFormatted,
+    tracksPlayed,
+    uniqueArtistsCount: artistCounts.size,
+    accountAgeDays,
+    memberSinceFormatted,
+    topArtist,
+    items,
+  };
+}
+
