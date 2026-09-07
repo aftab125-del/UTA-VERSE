@@ -665,17 +665,47 @@ app.get('/health/runtime', async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-// YouTube metadata search
+// YouTube metadata search (cached via Supabase search_cache)
 // -----------------------------------------------------------------------------
 
+const SEARCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 app.get('/search', async (req, res) => {
-  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const rawQuery = typeof req.query.q === 'string' ? req.query.q : '';
+  const query = rawQuery.trim().toLowerCase();
 
   if (!query || query.length > 200) {
     return res.status(400).json({
       error: 'A non-empty search query of 200 characters or fewer is required.',
     });
   }
+
+  // 1. Check Supabase search_cache for normalized query created within last 24 hours
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('search_cache')
+        .select('results, created_at')
+        .eq('query', query)
+        .maybeSingle();
+
+      if (!error && data) {
+        const createdAtTime = new Date(data.created_at).getTime();
+        const ageMs = Date.now() - createdAtTime;
+        const isFresh = ageMs < SEARCH_CACHE_TTL_MS;
+        const hasResults = Array.isArray(data.results) && data.results.length > 0;
+
+        if (isFresh && hasResults) {
+          console.log(`[YouTube Search] [CACHE HIT] query="${query}" age=${Math.round(ageMs / 1000)}s count=${data.results.length}`);
+          return res.json(data.results);
+        }
+      }
+    } catch (cacheErr) {
+      console.warn('[YouTube Search] Cache check error:', cacheErr.message);
+    }
+  }
+
+  console.log(`[YouTube Search] [CACHE MISS] query="${query}" - querying YouTube API`);
 
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
@@ -713,16 +743,34 @@ app.get('/search', async (req, res) => {
     });
 
     if (!response.ok) {
+      const isQuotaExceeded =
+        response.status === 429 ||
+        errorReason === 'quotaExceeded' ||
+        errorReason === 'dailyLimitExceeded' ||
+        errorReason === 'rateLimitExceeded' ||
+        errorReason === 'userRateLimitExceeded' ||
+        (errorMessage && /quota|rate\s*limit/i.test(errorMessage));
+
+      if (isQuotaExceeded) {
+        console.error('[YouTube Search] Quota/Rate-limit exceeded', {
+          status: response.status,
+          reason: errorReason,
+          message: errorMessage,
+        });
+        return res.status(503).json({
+          error: 'quota_exceeded',
+          message: 'Daily search quota reached. Try again later.',
+        });
+      }
+
       if (response.status === 401 || response.status === 403) {
-        const quotaExceeded = errorReason === 'quotaExceeded' || errorReason === 'dailyLimitExceeded';
         console.error('[YouTube Search] Authorization failure', {
           status: response.status,
           reason: errorReason,
-          quotaExceeded,
           message: errorMessage,
         });
-        return res.status(quotaExceeded ? 429 : 502).json({
-          error: quotaExceeded ? 'YouTube search quota has been exceeded.' : 'YouTube search authorization failed.',
+        return res.status(502).json({
+          error: 'YouTube search authorization failed.',
         });
       }
 
@@ -747,6 +795,39 @@ app.get('/search', async (req, res) => {
             : '',
       }))
       .filter((item) => item.videoId && item.title);
+
+    // Write to search_cache and perform opportunistic cleanup
+    if (supabase && results.length > 0) {
+      // Upsert cache row (overwrites existing row for that query, sets created_at to now())
+      supabase
+        .from('search_cache')
+        .upsert({
+          query,
+          results,
+          created_at: new Date().toISOString(),
+        }, { onConflict: 'query' })
+        .then(({ error: upsertErr }) => {
+          if (upsertErr) {
+            console.warn('[YouTube Search] Failed to write cache:', upsertErr.message);
+          } else {
+            console.log(`[YouTube Search] Cached ${results.length} results for query="${query}"`);
+          }
+        })
+        .catch((err) => console.warn('[YouTube Search] Cache upsert error:', err.message));
+
+      // Opportunistic cleanup: delete search_cache rows older than 48 hours
+      const cleanupThreshold = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      supabase
+        .from('search_cache')
+        .delete()
+        .lt('created_at', cleanupThreshold)
+        .then(({ error: deleteErr }) => {
+          if (deleteErr) {
+            console.warn('[YouTube Search] Cache cleanup error:', deleteErr.message);
+          }
+        })
+        .catch((err) => console.warn('[YouTube Search] Cache cleanup error:', err.message));
+    }
 
     return res.json(results);
   } catch (error) {

@@ -158,13 +158,28 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
         });
 
         if (!response.ok) {
-          throw new Error(payload && !Array.isArray(payload) && typeof payload.error === "string" ? payload.error : "YouTube search failed.");
+          const rawPayload = payload as { error?: string; message?: string } | null;
+          const isQuotaExceeded =
+            response.status === 429 ||
+            rawPayload?.error === "quota_exceeded" ||
+            rawPayload?.error === "YouTube search quota has been exceeded." ||
+            rawPayload?.message === "Daily search quota reached. Try again later.";
+
+          if (isQuotaExceeded) {
+            throw new Error("Search quota reached for today — results will resume automatically once it resets.");
+          }
+
+          throw new Error(
+            rawPayload && typeof rawPayload.error === "string" && rawPayload.error
+              ? rawPayload.error
+              : "YouTube search is temporarily unavailable."
+          );
         }
 
         setResults(nextResults);
       } catch (requestError) {
         if (requestError instanceof DOMException && requestError.name === "AbortError") return;
-        const message = requestError instanceof Error ? requestError.message : "YouTube search failed.";
+        const message = requestError instanceof Error ? requestError.message : "YouTube search is temporarily unavailable.";
         console.error("[YouTubeSearch] Request failed", { message });
         setResults([]);
         setError(message);
