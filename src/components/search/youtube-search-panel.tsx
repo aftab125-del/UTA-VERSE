@@ -172,14 +172,14 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
           throw new Error(
             rawPayload && typeof rawPayload.error === "string" && rawPayload.error
               ? rawPayload.error
-              : "YouTube search is temporarily unavailable."
+              : "UTA SEARCH is temporarily unavailable."
           );
         }
 
         setResults(nextResults);
       } catch (requestError) {
         if (requestError instanceof DOMException && requestError.name === "AbortError") return;
-        const message = requestError instanceof Error ? requestError.message : "YouTube search is temporarily unavailable.";
+        const message = requestError instanceof Error ? requestError.message : "UTA SEARCH is temporarily unavailable.";
         console.error("[YouTubeSearch] Request failed", { message });
         setResults([]);
         setError(message);
@@ -208,12 +208,12 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
 
   return (
     <section className="content-section youtube-search" aria-labelledby="youtube-search-heading">
-      <div className="section-heading">
+      <div className="section-heading section-heading--center">
         <div>
           <p className="eyebrow">Live discovery</p>
-          <h2 id="youtube-search-heading">YouTube</h2>
+          <h2 id="youtube-search-heading">UTA-VERSE</h2>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
           {hasResults && (
             <div className="view-toggle" role="group" aria-label="Results view mode">
               <button
@@ -235,7 +235,7 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
           <span className="section-heading__meta">Search the open signal</span>
         </div>
       </div>
-      <label className="search-field__label" htmlFor="youtube-search-input">Search YouTube</label>
+      <label className="search-field__label search-field__label--center" htmlFor="youtube-search-input">UTA Search Results</label>
       <input
         id="youtube-search-input"
         className="youtube-search__input"
@@ -244,9 +244,9 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Any song, artist, or phrase…"
       />
-      {isLoading && <p className="youtube-search__status">Searching YouTube…</p>}
+      {isLoading && <p className="youtube-search__status">Searching UTA-VERSE…</p>}
       {error && <p className="youtube-search__status youtube-search__status--error">{error}</p>}
-      {showEmptyState && <p className="youtube-search__status">No YouTube music results found.</p>}
+      {showEmptyState && <p className="youtube-search__status">No UTA search results found.</p>}
       {!isLoading && hasResults && (
         viewMode === "grid" ? (
           <ChromaGrid

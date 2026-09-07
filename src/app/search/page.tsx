@@ -10,12 +10,12 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <AppShell>
-      <div className="route-content route-content--narrow">
+      <div className="route-content route-content--narrow route-content--centered">
         <p className="eyebrow">Tune the signal</p>
         <h1 className="route-title">
           <BlurText text="Search" animateBy="words" direction="top" delay={300} stepDuration={0.8} />
         </h1>
-        <p className="route-lede">Discover any song live on YouTube.</p>
+        <p className="route-lede">Discover any song live on UTA-VERSE.</p>
         <YouTubeSearchPanel initialQuery={query} />
       </div>
     </AppShell>
