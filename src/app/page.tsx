@@ -1,139 +1,61 @@
 import Link from "next/link";
-import { AlbumCard } from "@/components/music/album-card";
-import { ArtistCard } from "@/components/music/artist-card";
-import { TrackCard } from "@/components/music/track-card";
-import { CatalogState } from "@/components/catalog/catalog-state";
 import { SectionHeading } from "@/components/layout/section-heading";
 import { AppShell } from "@/components/shell/app-shell";
 import { BlurText } from "@/components/reactbits/BlurText";
 import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getAlbums, getArtists, getTracks } from "@/lib/music/catalog";
-import { getRecentlyPlayedWithDetails } from "@/lib/music/library";
 import { getUserListeningStats } from "@/lib/music/stats";
-import type { Album, Artist, Track } from "@/types/music";
 import type { UserListeningStats } from "@/lib/music/stats";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const result = await loadHomeData();
-  if (!result.data) {
-    return (
-      <AppShell>
-        <HomeStage />
-        <div className="home-content">
-          <CatalogState
-            tone="error"
-            title="Catalog unavailable"
-            message="The music catalog could not be loaded. Check the Supabase environment and try again."
-          />
-        </div>
-      </AppShell>
-    );
-  }
-
-  const { tracks, albums, artists, user, displayName, stats, recentlyPlayed } = result.data;
-  const featured = tracks.slice(0, 4);
-  const trending = tracks.slice(4, 9);
-  const recommended = tracks.slice(9, 13);
+  const { user, displayName, stats } = result.data;
 
   return (
     <AppShell>
+      {/* 1. Hero / Intro Section with Personal Greeting & Tagline */}
       <HomeStage displayName={displayName} isUser={Boolean(user)} />
+
       <div className="home-content">
-        {/* 1. Personal Listening Telemetry Dashboard (React Bits Pro Stats-14 with 3D Tilt) */}
+        {/* 2. Personal Listening Telemetry Dashboard (React Bits Pro Stats-14 with 3D Tilt) */}
         <PersonalDashboard stats={stats} isGuest={!user} />
 
-        {/* 2. Jump Back In / Recently Played (if user has active history) */}
-        {recentlyPlayed.length > 0 && (
-          <CatalogTrackSection
-            title="Recently Played"
-            eyebrow="Your orbit"
-            href="/playlists"
-            tracks={recentlyPlayed}
-            emptyMessage="Listening history will appear as you play tracks."
-          />
-        )}
-
-        {/* 3. Featured Transmission */}
+        {/* 3. Featured Transmission / Discover CTA */}
         <section className="content-section" aria-labelledby="featured-heading">
           <SectionHeading eyebrow="Live Transmission" title="Featured Sound" />
           <div className="featured-panel">
             <div>
-              <p className="featured-panel__eyebrow">From the live catalog</p>
+              <p className="featured-panel__eyebrow">Search the open signal</p>
               <h2 id="featured-heading">Sound with room to breathe.</h2>
-              <p>Explore the latest tracks currently available in the UTA-VERSE catalog.</p>
+              <p>Explore millions of tracks, trending releases, and curated frequencies across the UTA-VERSE.</p>
               <Link className="text-button" href="/discover">
                 Enter Discover <span aria-hidden="true">→</span>
               </Link>
             </div>
             <div className="featured-panel__orb" aria-hidden="true" />
           </div>
-          {featured.length ? (
-            <div className="track-list" style={{ marginTop: "1.25rem" }}>
-              {featured.map((track) => (
-                <TrackCard key={track.id} track={track} />
-              ))}
-            </div>
-          ) : (
-            <CatalogState
-              title="Catalog is waiting"
-              message="Featured tracks will appear once catalog records are available."
-            />
-          )}
         </section>
 
-        {/* 4. Trending */}
-        <CatalogTrackSection
-          title="Trending"
-          eyebrow="Moving through the signal"
-          href="/discover"
-          tracks={trending}
-          emptyMessage="Trending tracks will appear once catalog data is available."
-        />
-
-        {/* 5. Recommended */}
-        <CatalogTrackSection
-          title="Recommended"
-          eyebrow="Catalog-based selection"
-          tracks={recommended}
-          emptyMessage="Personal recommendations require listening data and are not enabled yet."
-          variant="tile"
-        />
-
-        {/* 6. Albums in the atmosphere */}
-        <section className="content-section" aria-labelledby="albums-heading">
-          <SectionHeading title="Albums in the atmosphere" />
-          {albums.length ? (
-            <div className="card-grid" id="albums-heading">
-              {albums.map((album) => (
-                <AlbumCard key={album.id} album={album} />
-              ))}
+        {/* 4. About UTA-VERSE Section */}
+        <section className="content-section" aria-labelledby="about-heading">
+          <SectionHeading eyebrow="Platform Philosophy" title="About UTA-VERSE" />
+          <div className="about-panel">
+            <div className="about-panel__header">
+              <div className="about-panel__icon" aria-hidden="true" />
+              <p className="about-panel__eyebrow">Origin & Frequency</p>
             </div>
-          ) : (
-            <CatalogState
-              title="No albums yet"
-              message="Albums will appear when the Supabase catalog is seeded."
-            />
-          )}
-        </section>
-
-        {/* 7. Artists to watch */}
-        <section className="content-section" aria-labelledby="artists-heading">
-          <SectionHeading title="Artists to watch" />
-          {artists.length ? (
-            <div className="artist-grid" id="artists-heading">
-              {artists.map((artist) => (
-                <ArtistCard key={artist.id} artist={artist} />
-              ))}
+            <h2 id="about-heading" className="about-panel__heading">
+              A Universe of Music
+            </h2>
+            <p className="about-panel__text">
+              UTA-VERSE is a dark, cinematic space built for listening, discovery, and the frequencies that stay with you. Engineered from the ground up as a web-first sonic cosmos, it combines personal listening telemetry with high-fidelity playback and atmospheric visuals.
+            </p>
+            <div className="about-panel__credit">
+              <span>✦ Designed & Built by Aftab Kathat</span>
             </div>
-          ) : (
-            <CatalogState
-              title="No artists yet"
-              message="Artists will appear when the Supabase catalog is seeded."
-            />
-          )}
+          </div>
         </section>
       </div>
     </AppShell>
@@ -141,31 +63,19 @@ export default async function HomePage() {
 }
 
 interface HomeDataResult {
-  tracks: Track[];
-  albums: Album[];
-  artists: Artist[];
   user: { id: string; email?: string } | null;
   displayName: string | null;
   stats: UserListeningStats;
-  recentlyPlayed: Track[];
 }
 
-async function loadHomeData(): Promise<{ data?: HomeDataResult }> {
+async function loadHomeData(): Promise<{ data: HomeDataResult }> {
   try {
     const supabase = await createSupabaseServerClient();
+    const { data: authRes } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    const user = authRes?.user ?? null;
 
-    // Fetch user & catalog in parallel
-    const [authRes, tracks, albums, artists] = await Promise.all([
-      supabase.auth.getUser().catch(() => ({ data: { user: null } })),
-      getTracks(supabase, 24),
-      getAlbums(supabase, 8),
-      getArtists(supabase, 8),
-    ]);
-
-    const user = authRes?.data?.user ?? null;
     let displayName: string | null = null;
     let stats: UserListeningStats;
-    let recentlyPlayed: Track[] = [];
 
     if (user) {
       displayName =
@@ -174,27 +84,27 @@ async function loadHomeData(): Promise<{ data?: HomeDataResult }> {
         user.email?.split("@")[0] ??
         "Cosmonaut";
 
-      [stats, recentlyPlayed] = await Promise.all([
-        getUserListeningStats(user.id, supabase),
-        getRecentlyPlayedWithDetails(user.id, supabase, 6).catch(() => []),
-      ]);
+      stats = await getUserListeningStats(user.id, supabase);
     } else {
       stats = await getUserListeningStats("", supabase);
     }
 
     return {
       data: {
-        tracks,
-        albums,
-        artists,
         user,
         displayName,
         stats,
-        recentlyPlayed,
       },
     };
   } catch {
-    return {};
+    const emptyStats = await getUserListeningStats("", undefined as any);
+    return {
+      data: {
+        user: null,
+        displayName: null,
+        stats: emptyStats,
+      },
+    };
   }
 }
 
@@ -229,35 +139,6 @@ function HomeStage({ displayName, isUser }: HomeStageProps) {
         <p className="home-stage__note">
           {isUser ? "Telemetry active • 30-day rolling window" : "The universe is coming into focus."}
         </p>
-      </div>
-    </section>
-  );
-}
-
-function CatalogTrackSection({
-  title,
-  eyebrow,
-  href,
-  tracks,
-  emptyMessage,
-  variant = "row",
-}: {
-  title: string;
-  eyebrow: string;
-  href?: string;
-  tracks: Awaited<ReturnType<typeof getTracks>>;
-  emptyMessage: string;
-  variant?: "row" | "tile";
-}) {
-  return (
-    <section className="content-section">
-      <SectionHeading eyebrow={eyebrow} title={title} href={href} />
-      <div className={variant === "tile" ? "track-grid" : "track-list"}>
-        {tracks.length ? (
-          tracks.map((track) => <TrackCard key={track.id} track={track} variant={variant} />)
-        ) : (
-          <CatalogState title="Nothing here yet" message={emptyMessage} />
-        )}
       </div>
     </section>
   );

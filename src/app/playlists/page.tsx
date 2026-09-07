@@ -9,7 +9,7 @@ export default async function PlaylistsPage() {
 
   return (
     <AppShell>
-      <div className="route-content route-content--narrow">
+      <div className="route-content route-content--narrow route-content--centered">
         <p className="eyebrow">Your compositions</p>
         <h1 className="route-title">Playlists</h1>
         <p className="route-lede">Create and arrange personal listening spaces.</p>
