@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Database } from "@/types/database";
 import type { LikedTrack, ListeningHistoryEntry, TopArtist, Track } from "@/types/music";
+import { decodeHtmlEntities } from "@/lib/utils/html";
 
 type Client = SupabaseClient<Database>;
 
@@ -140,8 +141,8 @@ export async function recordListeningHistory(
       user_id: userId,
       track_id: trackId,
       progress_ms: progressMs,
-      title: meta.title,
-      artist: meta.artist,
+      title: decodeHtmlEntities(meta.title),
+      artist: decodeHtmlEntities(meta.artist),
       artwork: meta.artwork,
       duration: meta.duration,
     });
@@ -195,8 +196,8 @@ export async function getRecentlyPlayedWithDetails(userId: string, client?: Clie
       seen.add(row.track_id);
       deduped.push({
         id: row.track_id,
-        title: row.title || "Untitled",
-        artist: row.artist || "Unknown artist",
+        title: decodeHtmlEntities(row.title || "Untitled"),
+        artist: decodeHtmlEntities(row.artist || "Unknown artist"),
         album: "",
         artwork: row.artwork,
         duration: row.duration,
@@ -234,7 +235,7 @@ export async function getTopArtists(
 
   const artistMap = new Map<string, { count: number; artwork?: string }>();
   for (const entry of history) {
-    const artist = (entry.artist || "").trim();
+    const artist = decodeHtmlEntities((entry.artist || "").trim());
     if (!artist || artist.toLowerCase() === "unknown artist" || artist.toLowerCase() === "youtube") continue;
     const existing = artistMap.get(artist);
     if (existing) {
