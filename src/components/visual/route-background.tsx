@@ -1,14 +1,16 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { BallpitBackground } from "@/components/visual/ballpit-background";
-import { DarkVeilBackground } from "@/components/visual/dark-veil-background";
 
 export function RouteBackground() {
   const pathname = usePathname();
+  const isMobile = useIsMobile();
   const isHome = pathname === "/";
 
-  if (isHome) {
+  // Ballpit is exclusive to desktop Home. On mobile, AeroShards is forced everywhere via PageBackground.
+  if (isHome && !isMobile) {
     return <BallpitBackground key="ballpit-home-bg" />;
   }
 

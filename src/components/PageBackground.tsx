@@ -1,13 +1,16 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import AeroShards from "@/components/AeroShards";
 
 export function PageBackground() {
   const pathname = usePathname();
+  const isMobile = useIsMobile();
 
-  // Do not render on the Home page
-  if (pathname === "/") {
+  // On desktop, do not render AeroShards on the Home page (desktop Home uses Ballpit).
+  // On mobile (below 768px), force AeroShards everywhere, including Home.
+  if (pathname === "/" && !isMobile) {
     return null;
   }
 
