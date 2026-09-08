@@ -67,9 +67,24 @@
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .dashboard-stats-grid {
     grid-template-columns: 1fr;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  .dashboard-stats-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .dashboard-empty-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
   }
 }
 

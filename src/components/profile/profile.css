@@ -15,36 +15,47 @@
   .profile-page {
     padding: 1rem 1rem calc(11.5rem + env(safe-area-inset-bottom, 0px));
     gap: 2rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
-}
-
-@media (max-width: 640px) {
   .profile-stats-grid {
     grid-template-columns: 1fr !important;
     gap: 1rem !important;
+    width: 100%;
   }
   .profile-actions-grid {
     grid-template-columns: 1fr !important;
     gap: 1.25rem !important;
+    width: 100%;
   }
   .profile-card {
     padding: 1.5rem 1.25rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
   .profile-hero {
     padding: 1.75rem 1.25rem !important;
     border-radius: 1.25rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
   }
   .profile-hero__identity {
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: 1rem;
+    width: 100%;
   }
   .profile-hero__meta {
     align-items: center;
+    width: 100%;
   }
   .profile-hero__details {
     justify-content: center;
+    width: 100%;
   }
   .profile-hero__actions {
     justify-content: center;
