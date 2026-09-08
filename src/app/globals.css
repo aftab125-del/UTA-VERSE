@@ -959,60 +959,129 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     display: none !important;
   }
 
-  /* Content Sections & Stage */
+  /* Content Sections & Stage - Full-width single column on mobile */
   .home-stage {
-    min-height: 62svh;
-    padding: 4.5rem 1.25rem 2rem;
-    place-items: end start;
+    min-height: auto;
+    padding: 3.5rem 1rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .home-stage__content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .home-stage h1 {
-    font-size: clamp(2.35rem, 13vw, 4.5rem);
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: clamp(2.35rem, 12vw, 3.8rem);
     line-height: 0.95;
+    text-wrap: normal !important;
   }
 
   .home-stage__lede {
+    width: 100% !important;
+    max-width: 100% !important;
     font-size: 0.98rem;
     margin-top: 1rem;
     line-height: 1.55;
   }
 
   .home-stage__credit {
+    width: 100% !important;
+    max-width: 100% !important;
     font-size: 0.72rem;
+  }
+
+  .home-stage__rule {
+    width: min(100%, 8rem) !important;
+  }
+
+  .home-stage__note {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .home-content,
   .route-content {
-    padding: 2rem 1rem calc(10rem + env(safe-area-inset-bottom, 0px));
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 1.5rem 1rem calc(10rem + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+  }
+
+  .route-content--narrow,
+  .route-content--centered .content-section,
+  .route-content--centered .youtube-search,
+  .route-content--centered .library-tabs,
+  .route-content--centered .empty-panel {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .route-title {
+    width: 100% !important;
+    max-width: 100% !important;
     font-size: clamp(2.35rem, 11vw, 3.8rem);
   }
 
   .route-lede {
+    width: 100% !important;
+    max-width: 100% !important;
     font-size: 0.95rem;
     margin-top: 1rem;
   }
 
   .featured-panel {
+    width: 100% !important;
+    max-width: 100% !important;
     padding: 1.5rem 1.25rem;
     min-height: auto;
+    box-sizing: border-box;
   }
 
   .featured-panel h2 {
+    width: 100% !important;
+    max-width: 100% !important;
     font-size: clamp(1.75rem, 6vw, 2.4rem);
   }
 
+  .featured-panel p:not(.featured-panel__eyebrow) {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 1rem 0 1.5rem;
+  }
+
+  .featured-panel__orb {
+    opacity: 0.35;
+    right: -10%;
+    bottom: -30%;
+  }
+
   .about-panel {
+    width: 100% !important;
+    max-width: 100% !important;
     padding: 1.5rem 1.25rem;
+    box-sizing: border-box;
   }
 
   .about-panel__heading {
+    width: 100% !important;
+    max-width: 100% !important;
     font-size: clamp(1.35rem, 5vw, 1.8rem);
   }
 
   .about-panel__text {
+    width: 100% !important;
+    max-width: 100% !important;
     font-size: 0.92rem;
   }
 
@@ -1021,45 +1090,68 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .artist-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
+    width: 100% !important;
   }
 
   .section-heading {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.5rem;
+    width: 100% !important;
   }
 
   .content-section {
     margin-top: 2.5rem;
+    width: 100% !important;
+    box-sizing: border-box;
   }
 
   /* Search Page */
   .youtube-search {
     margin-top: 2rem;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
   }
 
   .youtube-search__input {
     font-size: 16px;
     padding: 0.8rem 0.9rem;
+    width: 100% !important;
+    box-sizing: border-box;
   }
 
   .youtube-result {
     grid-template-columns: 6.5rem 1fr;
     gap: 0.6rem;
     padding: 0.6rem;
+    width: 100% !important;
+    box-sizing: border-box;
   }
 
   .youtube-result__button {
     width: 6.5rem;
   }
 
+  .youtube-result__info {
+    min-width: 0;
+    flex: 1;
+  }
+
   .youtube-result__info h3 {
     font-size: 0.85rem;
-    max-width: 9.5rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .youtube-result__info p {
     font-size: 0.72rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Playlists Page */
@@ -1067,6 +1159,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     gap: 0.15rem;
     overflow-x: auto;
     scrollbar-width: none;
+    width: 100%;
   }
 
   .library-tabs__bar::-webkit-scrollbar {
@@ -1082,6 +1175,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .playlists-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
+    width: 100%;
   }
 
   .playlist-card__info strong {
@@ -1098,11 +1192,18 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     text-align: center;
     gap: 0.75rem;
     padding: 1rem;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .liked-songs__gradient {
     width: 4rem;
     height: 4rem;
+  }
+
+  .liked-songs__info {
+    width: 100%;
+    text-align: center;
   }
 
   .liked-songs__info h2 {
@@ -1120,15 +1221,19 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     align-items: center;
     gap: 0.6rem;
     text-align: center;
+    width: 100%;
   }
 
   .playlist-detail__actions {
     justify-content: center;
+    width: 100%;
   }
 
   .detail-hero {
     grid-template-columns: 1fr;
     gap: 1.25rem;
+    width: 100%;
+    text-align: center;
   }
 
   .detail-hero .artwork-tile {
@@ -1140,16 +1245,29 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .track-card--row {
     padding: 0.4rem 0.45rem;
     gap: 0.5rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .track-card__details {
+    min-width: 0;
+    flex: 1;
   }
 
   .track-card__details h3 {
     font-size: 0.82rem;
-    max-width: 8rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .track-card__details p {
     font-size: 0.7rem;
-    max-width: 8rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* User Menu */
