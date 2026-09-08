@@ -125,6 +125,23 @@
   .stats14-card__sparkline-box {
     transform: none !important;
   }
+
+  .stats14-card__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .stats14-card__value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stats14-card__subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /* ── 3D Tilted Card Wrapper ──────────────────────────────────────────────── */
@@ -187,6 +204,7 @@
   display: flex;
   align-items: center;
   gap: 0.55rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -208,9 +226,10 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+  flex-shrink: 0;
 }
 
 /* Trend & Delta Badges */
@@ -267,18 +286,18 @@
   letter-spacing: -0.04em;
   color: var(--color-ink);
   line-height: 1.1;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .stats14-card__subtitle {
   font-size: 0.78rem;
   color: var(--color-muted);
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 /* Sparkline Container */
