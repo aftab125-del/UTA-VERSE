@@ -2,10 +2,12 @@
 
 .dashboard-stats-section {
   width: 100%;
+  max-width: 100%;
   margin-top: 1rem;
   margin-bottom: 3.5rem;
   position: relative;
   z-index: 2;
+  box-sizing: border-box;
 }
 
 .dashboard-stats-header {
@@ -15,6 +17,8 @@
   margin-bottom: 1.5rem;
   gap: 1rem;
   flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .dashboard-stats-header__title {
@@ -55,29 +59,36 @@
 
 .dashboard-stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1.25rem;
   width: 100%;
-  perspective: 1200px;
-}
-
-@media (max-width: 1080px) {
-  .dashboard-stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
+  .dashboard-stats-section {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
   .dashboard-stats-grid {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-    width: 100%;
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    perspective: none !important;
   }
 
   .dashboard-stats-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.6rem;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .dashboard-empty-banner {
@@ -85,6 +96,29 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 1rem 1.25rem;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .stats14-card-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    perspective: none !important;
+  }
+
+  .stats14-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    transform: none !important;
+  }
+
+  .stats14-card__top,
+  .stats14-card__body,
+  .stats14-card__sparkline-box {
+    transform: none !important;
   }
 }
 
@@ -92,17 +126,20 @@
 .stats14-card-wrapper {
   position: relative;
   width: 100%;
+  max-width: 100%;
   height: 100%;
   min-height: 12.5rem;
   cursor: pointer;
   perspective: 1200px;
   transform-style: preserve-3d;
   user-select: none;
+  box-sizing: border-box;
 }
 
 .stats14-card {
   position: relative;
   width: 100%;
+  max-width: 100%;
   height: 100%;
   padding: 1.35rem 1.45rem;
   box-sizing: border-box;

@@ -85,7 +85,7 @@ export function BlurText({
   }
 
   return (
-    <span ref={ref} className={`blur-text ${className}`} style={{ display: "inline-flex", flexWrap: "wrap" }}>
+    <span ref={ref} className={`blur-text ${className}`} style={{ display: "inline-flex", flexWrap: "wrap", maxWidth: "100%", boxSizing: "border-box" }}>
       {elements.map((element, index) => (
         <motion.span
           key={index}
