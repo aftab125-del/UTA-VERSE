@@ -76,6 +76,10 @@ export class AudioEngine {
     }
   }
 
+  hasLoadedSource(): boolean {
+    return this.hasSource;
+  }
+
   pause() {
     if (this.hasSource) this.element.pause();
   }

@@ -205,6 +205,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   error: null,
 
   setTrack: async (track, queue = [track]) => {
+    if (get().currentTrack?.id === track.id && audioEngine?.hasLoadedSource()) {
+      if (queue !== get().queue) {
+        const queueIndex = Math.max(0, queue.findIndex((item) => item.id === track.id));
+        set({ queue, queueIndex });
+        persist(get);
+      }
+      if (get().isPlaying) {
+        audioEngine.pause();
+      } else {
+        try {
+          await audioEngine.play();
+          return;
+        } catch (error) {
+          console.warn("[PlayerStore] Failed to resume existing track, reloading", error);
+        }
+      }
+      return;
+    }
+
     const requestId = ++playbackRequestId;
     const queueIndex = Math.max(0, queue.findIndex((item) => item.id === track.id));
     audioEngine?.clear();
@@ -257,6 +276,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (get().isPlaying) {
       audioEngine?.pause();
       return;
+    }
+    if (audioEngine?.hasLoadedSource()) {
+      try {
+        await audioEngine.play();
+        return;
+      } catch (error) {
+        console.warn("[PlayerStore] Failed to resume audio engine, reloading track", error);
+      }
     }
     await get().setTrack(track, get().queue.length ? get().queue : [track]);
   },
