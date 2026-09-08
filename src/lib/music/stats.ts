@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Database } from "@/types/database";
+import { decodeHtmlEntities } from "@/lib/utils/html";
 
 type Client = SupabaseClient<Database>;
 
@@ -118,7 +119,7 @@ export async function getUserListeningStats(
 
   for (const entry of currentHistory) {
     // Artist tally
-    const artist = (entry.artist || "").trim();
+    const artist = decodeHtmlEntities((entry.artist || "").trim());
     if (artist && artist.toLowerCase() !== "unknown artist" && artist.toLowerCase() !== "youtube") {
       const existing = currentArtistCounts.get(artist) || { count: 0, artwork: entry.artwork };
       existing.count += 1;
@@ -127,10 +128,11 @@ export async function getUserListeningStats(
     }
 
     // Track tally
-    const trackKey = `${entry.title}:::${entry.artist}`;
+    const decodedTitle = decodeHtmlEntities(entry.title || "Unknown Track");
+    const trackKey = `${decodedTitle}:::${artist}`;
     const existingTrack = currentTrackCounts.get(trackKey) || {
-      title: entry.title || "Unknown Track",
-      artist: entry.artist || "Unknown Artist",
+      title: decodedTitle,
+      artist: artist,
       count: 0,
       artwork: entry.artwork,
     };
@@ -153,13 +155,13 @@ export async function getUserListeningStats(
   const sortedArtists = Array.from(currentArtistCounts.entries()).sort((a, b) => b[1].count - a[1].count);
   const topArtistEntry = sortedArtists[0];
   const topArtist = topArtistEntry
-    ? { name: topArtistEntry[0], count: topArtistEntry[1].count, artwork: topArtistEntry[1].artwork }
+    ? { name: decodeHtmlEntities(topArtistEntry[0]), count: topArtistEntry[1].count, artwork: topArtistEntry[1].artwork }
     : null;
 
   // If top artist exists, compute their daily sparkline
   if (topArtist) {
     for (const entry of currentHistory) {
-      if ((entry.artist || "").trim().toLowerCase() === topArtist.name.toLowerCase()) {
+      if (decodeHtmlEntities((entry.artist || "").trim()).toLowerCase() === topArtist.name.toLowerCase()) {
         const playedDate = new Date(entry.played_at);
         const dayStart = new Date(playedDate.getFullYear(), playedDate.getMonth(), playedDate.getDate()).getTime();
         const dayIndex = dayTimestamps.findIndex((ts) => ts === dayStart);
@@ -172,11 +174,18 @@ export async function getUserListeningStats(
 
   // Top Track
   const sortedTracks = Array.from(currentTrackCounts.values()).sort((a, b) => b.count - a.count);
-  const topTrack = sortedTracks[0] || null;
+  const topTrack = sortedTracks[0]
+    ? {
+        title: decodeHtmlEntities(sortedTracks[0].title),
+        artist: decodeHtmlEntities(sortedTracks[0].artist),
+        count: sortedTracks[0].count,
+        artwork: sortedTracks[0].artwork,
+      }
+    : null;
 
   // Unique artists count and delta
   const uniqueArtistsCount = currentArtistCounts.size;
-  const prevArtistSet = new Set(prevHistory.map((h) => (h.artist || "").trim()).filter(Boolean));
+  const prevArtistSet = new Set(prevHistory.map((h) => decodeHtmlEntities((h.artist || "").trim())).filter(Boolean));
   const uniqueArtistsDeltaPct = calculateDeltaPercent(uniqueArtistsCount, prevArtistSet.size);
 
   // 4. Listening Streak (consecutive days with at least 1 play up to today/yesterday)
@@ -506,7 +515,7 @@ export async function getUserAllTimeStats(
 
   const artistCounts = new Map<string, { count: number; artwork?: string }>();
   for (const entry of history) {
-    const artist = (entry.artist || "").trim();
+    const artist = decodeHtmlEntities((entry.artist || "").trim());
     if (artist && artist.toLowerCase() !== "unknown artist" && artist.toLowerCase() !== "youtube") {
       const existing = artistCounts.get(artist) || { count: 0, artwork: entry.artwork };
       existing.count += 1;
@@ -518,7 +527,7 @@ export async function getUserAllTimeStats(
   const sortedArtists = Array.from(artistCounts.entries()).sort((a, b) => b[1].count - a[1].count);
   const topArtistEntry = sortedArtists[0];
   const topArtist = topArtistEntry
-    ? { name: topArtistEntry[0], count: topArtistEntry[1].count, artwork: topArtistEntry[1].artwork }
+    ? { name: decodeHtmlEntities(topArtistEntry[0]), count: topArtistEntry[1].count, artwork: topArtistEntry[1].artwork }
     : null;
 
   const bucketCount = 8;
@@ -536,7 +545,7 @@ export async function getUserAllTimeStats(
     bucketPlays[bucketIdx] += 1;
     const durSec = h.duration > 0 ? h.duration : Math.round((h.progress_ms || 0) / 1000);
     bucketDuration[bucketIdx] += Math.round((durSec > 0 ? durSec : 180) / 60);
-    if (topArtist && (h.artist || "").trim().toLowerCase() === topArtist.name.toLowerCase()) {
+    if (topArtist && decodeHtmlEntities((h.artist || "").trim()).toLowerCase() === topArtist.name.toLowerCase()) {
       bucketArtistPlays[bucketIdx] += 1;
     }
   }
@@ -564,8 +573,8 @@ export async function getUserAllTimeStats(
       id: "alltime-top-artist",
       label: "All-Time Top Artist",
       value: topArtist ? topArtist.name : "None yet",
-      subtitle: topArtist ? `${topArtist.count} plays recorded` : "Play music to track",
-      delta: topArtist ? { value: "★ All-Time", trend: "badge" } : undefined,
+      subtitle: topArtist ? `${topArtist.count} plays recorded` : "Start playing music to track",
+      delta: topArtist ? { value: "★ Legend", trend: "badge" } : undefined,
       sparkline: bucketArtistPlays,
       iconType: "artist",
     },

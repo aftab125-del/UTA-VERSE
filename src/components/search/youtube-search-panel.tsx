@@ -6,6 +6,7 @@ import type { Track } from "@/types/music";
 import { BorderGlow } from "@/components/reactbits/BorderGlow";
 import { ChromaGrid } from "@/components/reactbits/ChromaGrid";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
+import { decodeHtmlEntities } from "@/lib/utils/html";
 
 interface YouTubeResult {
   videoId: string;
@@ -45,19 +46,22 @@ function normalizeYouTubeResult(item: unknown): YouTubeResult | null {
 
   const snippet = (raw.snippet as Record<string, unknown> | undefined) ?? {};
 
-  const title =
+  const rawTitle =
     typeof raw.title === "string" && raw.title
       ? raw.title
       : typeof snippet.title === "string" && snippet.title
       ? snippet.title
       : "Untitled Track";
 
-  const channelTitle =
+  const rawChannelTitle =
     typeof raw.channelTitle === "string" && raw.channelTitle
       ? raw.channelTitle
       : typeof snippet.channelTitle === "string" && snippet.channelTitle
       ? snippet.channelTitle
       : "YouTube";
+
+  const title = decodeHtmlEntities(rawTitle);
+  const channelTitle = decodeHtmlEntities(rawChannelTitle);
 
   const thumbnails = snippet.thumbnails as Record<string, Record<string, unknown>> | undefined;
   const thumbnail =
