@@ -68,54 +68,78 @@ export function Navigation4() {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   return (
-    <aside className="nav4-sidebar" aria-label="Main sidebar navigation">
-      {/* Top: Brand Logo Orb */}
-      <div className="nav4-brand-container">
-        <Link className="nav4-brand" href="/" aria-label="UTA-VERSE home">
-          <div className="nav4-brand__orb" aria-hidden="true" />
-        </Link>
-      </div>
+    <>
+      {/* Desktop Vertical Sidebar */}
+      <aside className="nav4-sidebar" aria-label="Main sidebar navigation">
+        {/* Top: Brand Logo Orb */}
+        <div className="nav4-brand-container">
+          <Link className="nav4-brand" href="/" aria-label="UTA-VERSE home">
+            <div className="nav4-brand__orb" aria-hidden="true" />
+          </Link>
+        </div>
 
-      {/* Center: Vertical Dock Navigation with Hover Scaling & Tooltips */}
-      <nav className="nav4-dock" aria-label="Navigation dock">
-        <div className="nav4-dock__items">
-          {navItems.map((item, idx) => {
+        {/* Center: Vertical Dock Navigation with Hover Scaling & Tooltips */}
+        <nav className="nav4-dock" aria-label="Navigation dock">
+          <div className="nav4-dock__items">
+            {navItems.map((item, idx) => {
+              const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              const isHovered = hoveredIdx === idx;
+
+              return (
+                <div
+                  key={item.href}
+                  className="nav4-dock__wrapper"
+                  onMouseEnter={() => setHoveredIdx(idx)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                >
+                  <Link
+                    href={item.href}
+                    className={`nav4-dock__btn${isActive ? " nav4-dock__btn--active" : ""}${isHovered ? " nav4-dock__btn--hovered" : ""}`}
+                    aria-label={item.label}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    <span className="nav4-dock__icon">{item.icon}</span>
+                  </Link>
+
+                  {/* Right-Floating Dock Tooltip */}
+                  <div
+                    className={`nav4-tooltip${isHovered ? " nav4-tooltip--visible" : ""}`}
+                    role="tooltip"
+                    aria-hidden={!isHovered}
+                  >
+                    <span className="nav4-tooltip__text">{item.label}</span>
+                    <div className="nav4-tooltip__arrow" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* Bottom spacer / mark */}
+        <div className="nav4-footer-mark" aria-hidden="true" />
+      </aside>
+
+      {/* Mobile Bottom Tab Bar (Icon-only) */}
+      <nav className="nav4-bottom-bar" aria-label="Mobile navigation">
+        <div className="nav4-bottom-bar__items">
+          {navItems.map((item) => {
             const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            const isHovered = hoveredIdx === idx;
 
             return (
-              <div
+              <Link
                 key={item.href}
-                className="nav4-dock__wrapper"
-                onMouseEnter={() => setHoveredIdx(idx)}
-                onMouseLeave={() => setHoveredIdx(null)}
+                href={item.href}
+                className={`nav4-bottom-bar__btn${isActive ? " nav4-bottom-bar__btn--active" : ""}`}
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
               >
-                <Link
-                  href={item.href}
-                  className={`nav4-dock__btn${isActive ? " nav4-dock__btn--active" : ""}${isHovered ? " nav4-dock__btn--hovered" : ""}`}
-                  aria-label={item.label}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  <span className="nav4-dock__icon">{item.icon}</span>
-                </Link>
-
-                {/* Right-Floating Dock Tooltip */}
-                <div
-                  className={`nav4-tooltip${isHovered ? " nav4-tooltip--visible" : ""}`}
-                  role="tooltip"
-                  aria-hidden={!isHovered}
-                >
-                  <span className="nav4-tooltip__text">{item.label}</span>
-                  <div className="nav4-tooltip__arrow" />
-                </div>
-              </div>
+                <span className="nav4-bottom-bar__icon">{item.icon}</span>
+              </Link>
             );
           })}
         </div>
       </nav>
-
-      {/* Bottom spacer / mark */}
-      <div className="nav4-footer-mark" aria-hidden="true" />
-    </aside>
+    </>
   );
 }

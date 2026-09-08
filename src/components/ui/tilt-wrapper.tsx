@@ -39,11 +39,20 @@ export function TiltWrapper({
   const [motionAllowed, setMotionAllowed] = useState(true);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setMotionAllowed(!mediaQuery.matches);
-    const updateMotion = (e: MediaQueryListEvent) => setMotionAllowed(!e.matches);
-    mediaQuery.addEventListener("change", updateMotion);
-    return () => mediaQuery.removeEventListener("change", updateMotion);
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const touchQuery = window.matchMedia("(max-width: 768px), (hover: none), (pointer: coarse)");
+
+    const updateMotion = () => {
+      setMotionAllowed(!motionQuery.matches && !touchQuery.matches);
+    };
+
+    updateMotion();
+    motionQuery.addEventListener("change", updateMotion);
+    touchQuery.addEventListener("change", updateMotion);
+    return () => {
+      motionQuery.removeEventListener("change", updateMotion);
+      touchQuery.removeEventListener("change", updateMotion);
+    };
   }, []);
 
   const rotateX = useSpring(0, defaultSpringConfig);
