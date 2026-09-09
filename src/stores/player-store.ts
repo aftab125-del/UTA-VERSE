@@ -366,10 +366,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playNext: (track) => {
-    const { queue, queueIndex } = get();
+    const { queue, queueIndex, currentTrack } = get();
+    if (!currentTrack || queue.length === 0) {
+      void get().setTrack(track, [track]);
+      return;
+    }
+
+    const existingIndex = queue.findIndex((t) => t.id === track.id);
+    if (existingIndex === queueIndex) {
+      // Already the currently playing track
+      return;
+    }
+
     const newQueue = [...queue];
-    newQueue.splice(queueIndex + 1, 0, track);
-    set({ queue: newQueue });
+    let newQueueIndex = queueIndex;
+
+    if (existingIndex >= 0) {
+      newQueue.splice(existingIndex, 1);
+      if (existingIndex < queueIndex) {
+        newQueueIndex -= 1;
+      }
+    }
+
+    const insertIndex = newQueueIndex + 1;
+    newQueue.splice(insertIndex, 0, track);
+    set({ queue: newQueue, queueIndex: newQueueIndex });
     persist(get);
   },
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useUser } from "@/hooks/use-user";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ArtworkTile } from "@/components/music/artwork-tile";
+import { TrackActions } from "@/components/ui/track-actions";
 import { usePlayerStore } from "@/stores/player-store";
 import type { Track } from "@/types/music";
 
@@ -103,7 +104,10 @@ export function LikedSongsSection() {
                 <h3>{track.title}</h3>
                 <p>{track.artist}</p>
               </div>
-              <span className="track-card__duration">{formatDuration(track.duration)}</span>
+              <div className="track-card__actions" onClick={(e) => e.stopPropagation()}>
+                <TrackActions track={track} size="small" variant="row" />
+                <span className="track-card__duration">{formatDuration(track.duration)}</span>
+              </div>
             </div>
           );
         })}

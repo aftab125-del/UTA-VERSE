@@ -5,7 +5,7 @@ import { usePlayerStore } from "@/stores/player-store";
 import type { Track } from "@/types/music";
 import { BorderGlow } from "@/components/reactbits/BorderGlow";
 import { ChromaGrid } from "@/components/reactbits/ChromaGrid";
-import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
+import { TrackActions } from "@/components/ui/track-actions";
 import { decodeHtmlEntities } from "@/lib/utils/html";
 
 interface YouTubeResult {
@@ -256,7 +256,7 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
           <ChromaGrid
             items={chromaItems}
             renderCardOverlay={(item, index) => (
-              <AddToQueueButton track={toTrack(results[index])} size="small" />
+              <TrackActions track={toTrack(results[index])} size="small" variant="dropdown" />
             )}
           />
         ) : (
@@ -312,10 +312,8 @@ function YouTubeResultCard({ result, track, onPlay }: { result: YouTubeResult; t
           <h3>{result.title}</h3>
           <p>{result.channelTitle}</p>
         </div>
-        <div className="youtube-result__actions">
-          <LikeButton track={track} size="small" />
-          <AddToPlaylistButton track={track} />
-          <AddToQueueButton track={track} size="small" />
+        <div className="youtube-result__actions" onClick={(e) => e.stopPropagation()}>
+          <TrackActions track={track} size="small" variant="row" />
         </div>
       </div>
     </article>

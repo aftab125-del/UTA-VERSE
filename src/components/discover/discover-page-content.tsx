@@ -6,7 +6,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getTopArtists, getRecentlyPlayedWithDetails } from "@/lib/music/library";
 import { TopArtistsStack } from "@/components/discover/top-artists-stack";
 import { ArtworkTile } from "@/components/music/artwork-tile";
-import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
+import { TrackActions } from "@/components/ui/track-actions";
 import { SectionHeading } from "@/components/layout/section-heading";
 import { BlurText } from "@/components/reactbits/BlurText";
 import { usePlayerStore } from "@/stores/player-store";
@@ -215,9 +215,7 @@ export function DiscoverPageContent() {
                     <p>{track.artist}</p>
                   </div>
                   <div className="track-card__actions" onClick={(e) => e.stopPropagation()}>
-                    <LikeButton track={track} size="small" />
-                    <AddToPlaylistButton track={track} />
-                    <AddToQueueButton track={track} size="small" />
+                    <TrackActions track={track} size="small" variant="row" />
                   </div>
                 </div>
               );
@@ -252,9 +250,14 @@ export function DiscoverPageContent() {
                   }}
                 >
                   <ArtworkTile artwork={track.artwork} title={track.title} size="medium" />
-                  <div className="jump-back-card__info">
-                    <strong>{track.title}</strong>
-                    <span>{track.artist}</span>
+                  <div className="jump-back-card__footer">
+                    <div className="jump-back-card__info">
+                      <strong>{track.title}</strong>
+                      <span>{track.artist}</span>
+                    </div>
+                    <div className="jump-back-card__actions" onClick={(e) => e.stopPropagation()}>
+                      <TrackActions track={track} size="small" variant="dropdown" />
+                    </div>
                   </div>
                 </div>
               );

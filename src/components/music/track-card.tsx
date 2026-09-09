@@ -1,7 +1,7 @@
 "use client";
 
 import { ArtworkTile } from "@/components/music/artwork-tile";
-import { LikeButton, AddToPlaylistButton } from "@/components/ui/track-actions";
+import { TrackActions } from "@/components/ui/track-actions";
 import { ContextMenu } from "@/components/ui/context-menu";
 import type { Track } from "@/types/music";
 import { usePlayerStore } from "@/stores/player-store";
@@ -38,9 +38,8 @@ export function TrackCard({ track, variant = "row" }: TrackCardProps) {
           <p>{track.artist}</p>
           <span>{track.album}</span>
         </div>
-        <div className="track-card__actions">
-          <LikeButton track={track} />
-          <AddToPlaylistButton track={track} />
+        <div className="track-card__actions" onClick={(e) => e.stopPropagation()}>
+          <TrackActions track={track} size="small" variant={variant === "tile" ? "dropdown" : "row"} />
           <span className="track-card__duration">{formatDuration(track.duration)}</span>
         </div>
       </article>

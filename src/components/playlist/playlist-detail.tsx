@@ -7,6 +7,7 @@ import { usePlayerStore } from "@/stores/player-store";
 import { CreatePlaylistModal } from "@/components/ui/create-playlist-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ContextMenu } from "@/components/ui/context-menu";
+import { TrackActions } from "@/components/ui/track-actions";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { PlaylistWithTracks, Track } from "@/types/music";
 
@@ -152,7 +153,10 @@ export function PlaylistDetail({ playlist: initial, isOwner }: PlaylistDetailPro
                       <h3>{track.title}</h3>
                       <p>{track.artist}</p>
                     </div>
-                    <span className="track-card__duration">{formatDuration(track.duration)}</span>
+                    <div className="track-card__actions" onClick={(e) => e.stopPropagation()}>
+                      <TrackActions track={track} size="small" variant="row" />
+                      <span className="track-card__duration">{formatDuration(track.duration)}</span>
+                    </div>
                   </div>
                 </ContextMenu>
               );
