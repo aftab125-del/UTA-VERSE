@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TrackActions } from "@/components/ui/track-actions";
 
 export function QueuePanel() {
   const [open, setOpen] = useState(false);
@@ -106,7 +107,10 @@ export function QueuePanel() {
                     <strong>{currentTrack.title}</strong>
                     <span>{currentTrack.artist}</span>
                   </div>
-                  <span className="queue-item__duration">{formatDuration(currentTrack.duration)}</span>
+                  <div className="queue-item__actions" onClick={(e) => e.stopPropagation()}>
+                    <TrackActions track={currentTrack} size="small" variant="row" />
+                    <span className="queue-item__duration">{formatDuration(currentTrack.duration)}</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -142,6 +146,9 @@ export function QueuePanel() {
                           <span>{track.artist}</span>
                         </div>
                         <span className="queue-item__duration">{formatDuration(track.duration)}</span>
+                        <div className="queue-item__actions" onClick={(e) => e.stopPropagation()}>
+                          <TrackActions track={track} size="small" variant="dropdown" />
+                        </div>
                         <button
                           type="button"
                           className="queue-item__remove"
