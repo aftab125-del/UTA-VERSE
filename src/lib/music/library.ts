@@ -113,14 +113,23 @@ export async function getLikedTracksWithDetails(userId: string, client?: Client,
   if (likedError) throw new Error(`Unable to load liked tracks: ${likedError.message}`);
   if (liked.length === 0) return [];
 
-  return liked.map((row) => ({
-    id: row.track_id,
-    title: row.title || "Untitled",
-    artist: row.artist || "Unknown artist",
-    album: "",
-    artwork: row.artwork,
-    duration: row.duration,
-  }));
+  return liked.map((row) => {
+    const rawId = row.track_id || "";
+    const videoId = rawId.startsWith("youtube:")
+      ? rawId.replace(/^youtube:/, "")
+      : /^[A-Za-z0-9_-]{11}$/.test(rawId)
+      ? rawId
+      : undefined;
+    return {
+      id: row.track_id,
+      videoId,
+      title: row.title || "Untitled",
+      artist: row.artist || "Unknown artist",
+      album: "",
+      artwork: row.artwork,
+      duration: row.duration,
+    };
+  });
 }
 
 // ── Listening history ─────────────────────────────────────────────────────────
@@ -194,8 +203,15 @@ export async function getRecentlyPlayedWithDetails(userId: string, client?: Clie
   for (const row of history) {
     if (!seen.has(row.track_id)) {
       seen.add(row.track_id);
+      const rawId = row.track_id || "";
+      const videoId = rawId.startsWith("youtube:")
+        ? rawId.replace(/^youtube:/, "")
+        : /^[A-Za-z0-9_-]{11}$/.test(rawId)
+        ? rawId
+        : undefined;
       deduped.push({
         id: row.track_id,
+        videoId,
         title: decodeHtmlEntities(row.title || "Untitled"),
         artist: decodeHtmlEntities(row.artist || "Unknown artist"),
         album: "",

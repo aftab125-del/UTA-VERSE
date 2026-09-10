@@ -122,13 +122,23 @@ async function resolveTrackSource(track: Track): Promise<string> {
   if (cachedSource) return cachedSource;
 
   const maxAttempts = 45;
-  let videoIdOverride = track.videoId;
+  const inferredVideoId =
+    track.videoId ||
+    (track.id?.startsWith("youtube:") ? track.id.replace(/^youtube:/, "") : undefined) ||
+    (/^[A-Za-z0-9_-]{11}$/.test(track.id) ? track.id : undefined);
+
+  let videoIdOverride = inferredVideoId;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const response = await fetch("/api/playback/resolve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: track.title, artist: track.artist, videoId: videoIdOverride }),
+      body: JSON.stringify({
+        title: track.title,
+        artist: track.artist,
+        videoId: videoIdOverride || inferredVideoId,
+        trackId: track.id,
+      }),
     });
     const data = (await response.json().catch(() => ({}))) as {
       status?: unknown;
