@@ -497,7 +497,46 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .youtube-result__details { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .youtube-result__info { min-width: 0; }
 .youtube-result__info h3 { margin: 0; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.youtube-result__info p { margin: 0.35rem 0 0; color: var(--color-muted); }
+.youtube-result__info p { margin: 0; color: var(--color-muted); font-size: 0.82rem; }
+.youtube-result__meta-line { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.35rem; flex-wrap: wrap; }
+.synced-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.12rem 0.42rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid rgba(169, 139, 255, 0.45);
+  color: #c4b5fd;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.22);
+  line-height: 1.1;
+  flex-shrink: 0;
+  user-select: none;
+}
+.synced-badge__icon { font-size: 0.72rem; color: #a78bfa; }
+.fullscreen-player__mobile-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+.fullscreen-player__mobile-sync-badge--synced {
+  background: rgba(139, 92, 246, 0.22);
+  border-color: rgba(169, 139, 255, 0.5);
+  color: #d8b4fe;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+}
 .youtube-result__actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
 .view-toggle { display: inline-flex; gap: 0.35rem; padding: 0.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
 .view-toggle__btn { padding: 0.3rem 0.65rem; border: 0; border-radius: calc(var(--radius-sm) - 2px); background: transparent; color: var(--color-muted); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: all 160ms ease; }
@@ -1215,15 +1254,31 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     max-width: 100% !important;
   }
 
-  .youtube-result__info p {
+  .youtube-result__meta-line {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
+    margin-top: 0.2rem !important;
+    flex-wrap: nowrap !important;
+    overflow: hidden !important;
+  }
+
+  .youtube-result__meta-line p {
     font-size: 0.72rem !important;
     line-height: 1.2 !important;
-    margin: 0.15rem 0 0 0 !important;
+    margin: 0 !important;
     color: var(--color-muted) !important;
-    max-width: 100% !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
+    flex-shrink: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .youtube-result__meta-line .synced-badge {
+    font-size: 0.62rem !important;
+    padding: 0.08rem 0.35rem !important;
+    flex-shrink: 0 !important;
   }
 
   .youtube-result__actions {
