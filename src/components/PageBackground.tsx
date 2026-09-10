@@ -8,9 +8,28 @@ export function PageBackground() {
   const pathname = usePathname();
   const isMobile = useIsMobile();
 
+  // On mobile (<768px), render a plain, lightweight near-black solid background on all pages.
+  // This bypasses WebGPU and AeroShards/Ballpit completely for performance and simplicity.
+  if (isMobile) {
+    return (
+      <div
+        className="mobile-plain-bg"
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100vw",
+          height: "100vh",
+          zIndex: 0,
+          pointerEvents: "none",
+          backgroundColor: "#0a0b10",
+        }}
+        aria-hidden="true"
+      />
+    );
+  }
+
   // On desktop, do not render AeroShards on the Home page (desktop Home uses Ballpit).
-  // On mobile (below 768px), force AeroShards everywhere, including Home.
-  if (pathname === "/" && !isMobile) {
+  if (pathname === "/") {
     return null;
   }
 
