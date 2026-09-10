@@ -222,7 +222,7 @@ export function cleanTrackMetadata(
 
 /**
  * Parses synchronized LRC text format into structured timestamps.
- * Supports standard [mm:ss.xx] and multi-tag lines.
+ * Supports standard [mm:ss.xx], [offset:ms], and multi-tag lines.
  */
 export function parseLrc(lrcContent: string): SyncedLine[] {
   if (!lrcContent || typeof lrcContent !== "string") return [];
@@ -230,6 +230,16 @@ export function parseLrc(lrcContent: string): SyncedLine[] {
   const lines = lrcContent.split("\n");
   const result: SyncedLine[] = [];
   const tagRegex = /\[(\d{2}):(\d{2})(?:\.(\d{2,3}))?\]/g;
+  let globalOffsetSeconds = 0;
+
+  // Check for [offset:+/-ms] tag
+  for (const rawLine of lines) {
+    const offsetMatch = rawLine.trim().match(/^\[offset:\s*([+-]?\d+)\s*\]/i);
+    if (offsetMatch) {
+      globalOffsetSeconds = parseInt(offsetMatch[1], 10) / 1000;
+      break;
+    }
+  }
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -245,7 +255,7 @@ export function parseLrc(lrcContent: string): SyncedLine[] {
       const fractionStr = match[3] || "0";
       const fraction =
         fractionStr.length === 3 ? parseInt(fractionStr, 10) / 1000 : parseInt(fractionStr, 10) / 100;
-      timestamps.push(minutes * 60 + seconds + fraction);
+      timestamps.push(minutes * 60 + seconds + fraction + globalOffsetSeconds);
     }
 
     if (timestamps.length === 0) continue;
@@ -253,12 +263,45 @@ export function parseLrc(lrcContent: string): SyncedLine[] {
     const text = line.replace(/\[\d{2}:\d{2}(?:\.\d{2,3})?\]/g, "").trim();
 
     for (const time of timestamps) {
-      result.push({ time, text });
+      result.push({ time: Math.max(0, time), text });
     }
   }
 
   result.sort((a, b) => a.time - b.time);
   return result;
+}
+
+/**
+ * Checks whether synchronized lyrics can be reliably synchronized to track playback.
+ * If timestamps are invalid or wildly mismatch the track duration, returns false
+ * so the player displays the lyrics in pure scroll-only mode without forced jumps.
+ */
+export function isSyncValid(syncedLyrics: SyncedLine[] | null, trackDuration: number): boolean {
+  if (!syncedLyrics || syncedLyrics.length < 2) return false;
+
+  const firstTime = syncedLyrics[0].time;
+  const lastTime = syncedLyrics[syncedLyrics.length - 1].time;
+
+  // Timestamps must show time progression
+  if (lastTime <= firstTime && syncedLyrics.length > 2) return false;
+
+  if (trackDuration > 0) {
+    // If the first lyric starts AFTER the entire track ends
+    if (firstTime >= trackDuration) return false;
+
+    // If the last lyric is far past the track duration (e.g. full 5:34 album track lyrics on a 3:48 video cut)
+    // Allow up to 18 seconds of trailing outro padding
+    if (lastTime > trackDuration + 18) {
+      return false;
+    }
+
+    // If track is long (> 90s), but last lyric ends in first 35% of track (truncated or cut lyrics)
+    if (trackDuration > 90 && lastTime < trackDuration * 0.35) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -293,8 +336,9 @@ const clientLyricsCache = new Map<string, LyricsResponse>();
 /**
  * Fetches lyrics for a track via the internal /api/lyrics proxy.
  */
-export async function fetchLyrics(track: Track): Promise<LyricsResponse> {
-  const cacheKey = track.id || `${track.artist}:${track.title}`;
+export async function fetchLyrics(track: Track, audioDuration?: number): Promise<LyricsResponse> {
+  const effectiveDuration = audioDuration && audioDuration > 0 ? audioDuration : track.duration || 0;
+  const cacheKey = `${track.id || `${track.artist}:${track.title}`}:${Math.round(effectiveDuration)}`;
   const cached = clientLyricsCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -305,8 +349,8 @@ export async function fetchLyrics(track: Track): Promise<LyricsResponse> {
       title: track.title,
       artist: track.artist,
     });
-    if (track.duration && track.duration > 0) {
-      params.set("duration", Math.round(track.duration).toString());
+    if (effectiveDuration > 0) {
+      params.set("duration", Math.round(effectiveDuration).toString());
     }
 
     const response = await fetch(`/api/lyrics?${params.toString()}`);

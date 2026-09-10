@@ -32,6 +32,7 @@ export function PlayerDock() {
   const setIsExpanded = usePlayerStore((state) => state.setIsExpanded);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const hasTrack = Boolean(currentTrack);
@@ -137,14 +138,26 @@ export function PlayerDock() {
 
               {/* Horizontal Seek Timeline */}
               <div className="player-dock__timeline">
-                <span className="player-dock__time">{formatTime(position)}</span>
+                <span className="player-dock__time">
+                  {formatTime(scrubPosition !== null ? scrubPosition : position)}
+                </span>
                 <input
                   type="range"
                   className="player-dock__slider"
                   min="0"
                   max={duration || 1}
-                  value={Math.min(position, duration || 1)}
-                  onChange={(event) => seek(Number(event.target.value))}
+                  value={scrubPosition !== null ? scrubPosition : Math.min(position, duration || 1)}
+                  onChange={(event) => {
+                    const val = Number(event.target.value);
+                    setScrubPosition(val);
+                    seek(val);
+                  }}
+                  onPointerUp={() => {
+                    if (scrubPosition !== null) {
+                      seek(scrubPosition);
+                      setScrubPosition(null);
+                    }
+                  }}
                   disabled={!hasTrack || isResolving || isLoading || duration <= 0}
                   aria-label="Track progress"
                 />

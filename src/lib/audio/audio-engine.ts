@@ -13,6 +13,7 @@ export class AudioEngine {
   private readonly element: HTMLAudioElement;
   private cleanupListeners: (() => void) | null = null;
   private hasSource = false;
+  private currentCallbacks: AudioEngineCallbacks | null = null;
 
   constructor() {
     if (typeof window === "undefined") throw new Error("AudioEngine requires a browser");
@@ -27,11 +28,13 @@ export class AudioEngine {
     this.element.src = source;
     this.element.load();
     this.hasSource = true;
+    this.currentCallbacks = callbacks;
     callbacks.onLoading?.();
 
     const onLoadedMetadata = () => callbacks.onReady?.(this.element.duration || 0);
     const onTimeUpdate = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
     const onProgress = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
+    const onSeeked = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
     const onPlaying = () => callbacks.onPlaying?.();
     const onPause = () => callbacks.onPaused?.();
     const onEnded = () => callbacks.onEnded?.();
@@ -47,6 +50,7 @@ export class AudioEngine {
     this.element.addEventListener("loadedmetadata", onLoadedMetadata);
     this.element.addEventListener("timeupdate", onTimeUpdate);
     this.element.addEventListener("progress", onProgress);
+    this.element.addEventListener("seeked", onSeeked);
     this.element.addEventListener("playing", onPlaying);
     this.element.addEventListener("pause", onPause);
     this.element.addEventListener("ended", onEnded);
@@ -56,6 +60,7 @@ export class AudioEngine {
       this.element.removeEventListener("loadedmetadata", onLoadedMetadata);
       this.element.removeEventListener("timeupdate", onTimeUpdate);
       this.element.removeEventListener("progress", onProgress);
+      this.element.removeEventListener("seeked", onSeeked);
       this.element.removeEventListener("playing", onPlaying);
       this.element.removeEventListener("pause", onPause);
       this.element.removeEventListener("ended", onEnded);
@@ -85,7 +90,15 @@ export class AudioEngine {
   }
 
   seek(position: number) {
-    if (this.hasSource && Number.isFinite(position)) this.element.currentTime = Math.max(0, position);
+    if (this.hasSource && Number.isFinite(position)) {
+      const targetTime = Math.max(0, position);
+      this.element.currentTime = targetTime;
+      this.currentCallbacks?.onProgress?.(
+        targetTime,
+        this.element.duration || 0,
+        this.getBufferedTime()
+      );
+    }
   }
 
   setVolume(volume: number) { this.element.volume = Math.min(1, Math.max(0, volume)); }
@@ -93,6 +106,7 @@ export class AudioEngine {
   clear() {
     this.cleanupListeners?.();
     this.cleanupListeners = null;
+    this.currentCallbacks = null;
     this.element.pause();
     this.element.removeAttribute("src");
     this.element.load();

@@ -293,7 +293,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   pause: () => { if (!get().isResolving) audioEngine?.pause(); },
-  seek: (position) => { if (!get().isResolving && !get().isLoading && get().duration > 0) audioEngine?.seek(position); },
+  seek: (position) => {
+    if (!get().isResolving && !get().isLoading && get().duration > 0) {
+      const targetPos = Math.max(0, Math.min(get().duration, position));
+      set({ position: targetPos });
+      audioEngine?.seek(targetPos);
+    }
+  },
   setVolume: (volume) => {
     const nextVolume = Math.min(1, Math.max(0, volume));
     set({ volume: nextVolume, isMuted: nextVolume === 0 });
