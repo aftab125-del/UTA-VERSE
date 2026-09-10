@@ -10,16 +10,16 @@ import type { Track } from "@/types/music";
 
 export function RecentlyPlayedSection() {
   const { user } = useUser();
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tracks, setTracks] = useState<Track[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const loading = Boolean(user) && tracks === null && !error;
   const setTrack = usePlayerStore((s) => s.setTrack);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const supabase = createSupabaseBrowserClient();
 
   useEffect(() => {
-    if (!user) { setLoading(false); return; }
+    if (!user) return;
     let cancelled = false;
     (async () => {
       const { data: history, error: historyError } = await supabase
@@ -32,10 +32,10 @@ export function RecentlyPlayedSection() {
       if (historyError) {
         console.error("[RecentlyPlayedSection] Failed to load history", historyError.message);
         setError("Failed to load listening history.");
-        setLoading(false);
+        setTracks([]);
         return;
       }
-      if (!history || history.length === 0) { setTracks([]); setLoading(false); return; }
+      if (!history || history.length === 0) { setTracks([]); return; }
 
       // Deduplicate by track_id, keeping the most recent entry
       const seen = new Set<string>();
@@ -43,8 +43,15 @@ export function RecentlyPlayedSection() {
       for (const row of history) {
         if (!seen.has(row.track_id)) {
           seen.add(row.track_id);
+          const rawId = row.track_id || "";
+          const videoId = rawId.startsWith("youtube:")
+            ? rawId.replace(/^youtube:/, "")
+            : /^[A-Za-z0-9_-]{11}$/.test(rawId)
+            ? rawId
+            : undefined;
           result.push({
             id: row.track_id,
+            videoId,
             title: row.title || "Untitled",
             artist: row.artist || "Unknown artist",
             album: "",
@@ -55,7 +62,6 @@ export function RecentlyPlayedSection() {
         if (result.length >= 50) break;
       }
       setTracks(result);
-      setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [user, supabase]);
@@ -68,9 +74,11 @@ export function RecentlyPlayedSection() {
     </div>
   );
 
+  const displayTracks = tracks ?? [];
+
   if (loading) return <div className="library-loading">Loading…</div>;
   if (error) return <div className="empty-panel catalog-state"><span className="empty-panel__mark" aria-hidden="true">⚠</span><h2>Something went wrong</h2><p>{error}</p></div>;
-  if (tracks.length === 0) return (
+  if (displayTracks.length === 0) return (
     <div className="empty-panel catalog-state">
       <span className="empty-panel__mark" aria-hidden="true">↻</span>
       <h2>No listening history yet</h2>
@@ -79,7 +87,7 @@ export function RecentlyPlayedSection() {
   );
 
   function playAll() {
-    if (tracks.length > 0) void setTrack(tracks[0], tracks);
+    if (displayTracks.length > 0) void setTrack(displayTracks[0], displayTracks);
   }
 
   return (
@@ -91,7 +99,7 @@ export function RecentlyPlayedSection() {
         </button>
       </div>
       <div className="track-list">
-        {tracks.map((track, i) => {
+        {displayTracks.map((track, i) => {
           const isCurrent = currentTrack?.id === track.id;
           return (
             <div
@@ -99,8 +107,8 @@ export function RecentlyPlayedSection() {
               className={`track-card track-card--row${isCurrent ? " track-card--current" : ""}`}
               role="button"
               tabIndex={0}
-              onClick={() => void setTrack(track, tracks)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void setTrack(track, tracks); } }}
+              onClick={() => void setTrack(track, displayTracks)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void setTrack(track, displayTracks); } }}
             >
               <div className="track-card__position">
                 {isCurrent && isPlaying ? <span className="track-card__eq" aria-hidden="true"><span /><span /><span /></span> : <span>{i + 1}</span>}

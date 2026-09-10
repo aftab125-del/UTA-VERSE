@@ -10,7 +10,6 @@ function getClient(client?: Client): Client {
 }
 
 type PlaylistRow = Tables<"playlists">;
-type PlaylistTrackRow = Tables<"playlist_tracks">;
 
 /** Subset of Track fields we denormalize into playlist_tracks. */
 interface TrackMeta {
@@ -79,14 +78,23 @@ export async function getPlaylistWithTracks(playlistId: string, client?: Client)
     .order("position", { ascending: true });
   if (ptError) throw new Error(`Unable to load playlist tracks: ${ptError.message}`);
 
-  const tracks: Track[] = (playlistTracks ?? []).map((pt) => ({
-    id: pt.track_id,
-    title: pt.title || "Untitled",
-    artist: pt.artist || "Unknown artist",
-    album: "",
-    artwork: pt.artwork,
-    duration: pt.duration,
-  }));
+  const tracks: Track[] = (playlistTracks ?? []).map((pt) => {
+    const rawId = pt.track_id || "";
+    const videoId = rawId.startsWith("youtube:")
+      ? rawId.replace(/^youtube:/, "")
+      : /^[A-Za-z0-9_-]{11}$/.test(rawId)
+      ? rawId
+      : undefined;
+    return {
+      id: pt.track_id,
+      videoId,
+      title: pt.title || "Untitled",
+      artist: pt.artist || "Unknown artist",
+      album: "",
+      artwork: pt.artwork,
+      duration: pt.duration,
+    };
+  });
 
   const base = mapPlaylist(playlist);
   return { ...base, tracks };

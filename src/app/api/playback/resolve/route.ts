@@ -109,14 +109,47 @@ async function checkSupabasePlaybackCache(videoId: string) {
       return row.audio_url;
     }
 
-    // 2. Check storage bucket directly
+    // 2. Fast direct HTTP HEAD check on public storage bucket URL (CDN fast path)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
+    if (supabaseUrl) {
+      const fileName = `${videoId}.m4a`;
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${AUDIO_BUCKET}/${fileName}`;
+      try {
+        const headRes = await fetch(publicUrl, { method: "HEAD", cache: "no-store" });
+        if (headRes.ok) {
+          void Promise.resolve(
+            supabase
+              .from("playback_cache")
+              .upsert({
+                video_id: videoId,
+                audio_url: publicUrl,
+                created_at: new Date().toISOString(),
+              }, { onConflict: "video_id" })
+          ).catch(() => {});
+          return publicUrl;
+        }
+      } catch (headErr) {
+        console.warn("[PlaybackResolver] Public bucket HEAD check error:", headErr instanceof Error ? headErr.message : headErr);
+      }
+    }
+
+    // 3. Fallback: Check storage bucket via SDK list
     const fileName = `${videoId}.m4a`;
     const { data: fileList } = await supabase.storage
       .from(AUDIO_BUCKET)
-      .list("", { search: fileName, limit: 1 });
+      .list("", { search: fileName, limit: 5 });
 
-    if (Array.isArray(fileList) && fileList.some((f) => f.name === fileName)) {
+    if (Array.isArray(fileList) && fileList.some((f) => f.name === fileName || f.name.startsWith(videoId))) {
       const publicUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName).data.publicUrl;
+      void Promise.resolve(
+        supabase
+          .from("playback_cache")
+          .upsert({
+            video_id: videoId,
+            audio_url: publicUrl,
+            created_at: new Date().toISOString(),
+          }, { onConflict: "video_id" })
+      ).catch(() => {});
       return publicUrl;
     }
   } catch (cacheErr) {
@@ -190,7 +223,7 @@ async function persistAudioToSupabase(videoId: string, title: string, artist: st
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  let body: { title?: unknown; artist?: unknown; videoId?: unknown };
+  let body: { title?: unknown; artist?: unknown; videoId?: unknown; trackId?: unknown; id?: unknown };
 
   try {
     body = await request.json();
@@ -200,14 +233,23 @@ export async function POST(request: Request) {
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const artist = typeof body.artist === "string" ? body.artist.trim() : "";
-  const requestedVideoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
-  if (
-    !title ||
-    !artist ||
-    title.length > 200 ||
-    artist.length > 200 ||
-    (requestedVideoId && !/^[A-Za-z0-9_-]{11}$/.test(requestedVideoId))
-  ) {
+
+  // Extract videoId robustly from body.videoId, body.trackId, or body.id
+  let rawVideoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
+  if (!rawVideoId) {
+    const altId = typeof body.trackId === "string" ? body.trackId.trim() : typeof body.id === "string" ? body.id.trim() : "";
+    if (altId.startsWith("youtube:")) {
+      rawVideoId = altId.replace(/^youtube:/, "").trim();
+    } else if (/^[A-Za-z0-9_-]{11}$/.test(altId)) {
+      rawVideoId = altId;
+    }
+  }
+
+  const requestedVideoId = /^[A-Za-z0-9_-]{11}$/.test(rawVideoId) ? rawVideoId : "";
+  const safeTitle = title || "Unknown Track";
+  const safeArtist = artist || "Unknown Artist";
+
+  if (!requestedVideoId && (!title || !artist)) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
@@ -220,57 +262,76 @@ export async function POST(request: Request) {
     }
   }
 
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!requestedVideoId && !apiKey) {
-    console.error("[PlaybackResolver] YOUTUBE_API_KEY is not configured.");
-    return NextResponse.json({ error: "Playback source resolution is not configured." }, { status: 500 });
-  }
-
   if (!NEBULA_MUSIC_SERVER_URL) {
     console.error("[PlaybackResolver] NEBULA_MUSIC_SERVER_URL is not configured.");
     return NextResponse.json({ error: "Playback source resolution is not configured." }, { status: 500 });
   }
 
+  const apiKey = process.env.YOUTUBE_API_KEY;
+
   try {
-    const queries = requestedVideoId ? [] : [`${title} ${artist}`, `${artist} ${title} audio`];
+    const queries = requestedVideoId ? [] : [`${safeTitle} ${safeArtist}`, `${safeArtist} ${safeTitle} audio`];
     let candidates: SearchCandidate[] = [];
     let lastFailure: { status: number; reason: string | null; message: string | null } | null = null;
 
-    for (const searchQuery of queries) {
-      const requestUrl = `${YOUTUBE_SEARCH_ENDPOINT}?part=snippet&type=video&videoCategoryId=10&maxResults=5&q=${encodeURIComponent(searchQuery)}&key=[redacted]`;
-      console.info("[PlaybackResolver] YouTube search request", { requestUrl, searchQuery });
-      const { response, data } = await searchYouTube(searchQuery, apiKey as string);
-      const reason = data.error?.errors?.[0]?.reason ?? data.error?.status ?? null;
-      const message = data.error?.message ?? null;
-      console.info("[PlaybackResolver] YouTube search response", {
-        status: response.status,
-        searchQuery,
-        items: data.items?.length ?? 0,
-        reason,
-        message,
-      });
+    if (!requestedVideoId && apiKey) {
+      for (const searchQuery of queries) {
+        const requestUrl = `${YOUTUBE_SEARCH_ENDPOINT}?part=snippet&type=video&videoCategoryId=10&maxResults=5&q=${encodeURIComponent(searchQuery)}&key=[redacted]`;
+        console.info("[PlaybackResolver] YouTube search request", { requestUrl, searchQuery });
+        const { response, data } = await searchYouTube(searchQuery, apiKey);
+        const reason = data.error?.errors?.[0]?.reason ?? data.error?.status ?? null;
+        const message = data.error?.message ?? null;
+        console.info("[PlaybackResolver] YouTube search response", {
+          status: response.status,
+          searchQuery,
+          items: data.items?.length ?? 0,
+          reason,
+          message,
+        });
 
-      if (!response.ok) {
-        lastFailure = { status: response.status, reason, message };
-        break;
+        if (!response.ok) {
+          lastFailure = { status: response.status, reason, message };
+          break;
+        }
+
+        candidates = data.items ?? [];
+        if (candidates.length > 0) break;
       }
-
-      candidates = data.items ?? [];
-      if (candidates.length > 0) break;
     }
 
-    if (lastFailure) {
-      console.error("[PlaybackResolver] YouTube upstream failure", { title, artist, ...lastFailure });
+    // Fallback: If YouTube Data API failed or has no key, query backend search
+    if (!requestedVideoId && (lastFailure || candidates.length === 0)) {
+      console.info("[PlaybackResolver] Querying backend search fallback", { title: safeTitle, artist: safeArtist });
+      try {
+        const query = `${safeTitle} ${safeArtist}`;
+        const searchRes = await fetch(`${NEBULA_MUSIC_SERVER_URL}/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json().catch(() => null);
+          if (Array.isArray(searchData) && searchData.length > 0) {
+            candidates = searchData.map((item: { videoId?: string; title?: string; channelTitle?: string }) => ({
+              id: { videoId: item.videoId },
+              snippet: { title: item.title, channelTitle: item.channelTitle },
+            }));
+            lastFailure = null;
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn("[PlaybackResolver] Backend search fallback error:", fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);
+      }
+    }
+
+    if (lastFailure && candidates.length === 0) {
+      console.error("[PlaybackResolver] Upstream search failure", { title: safeTitle, artist: safeArtist, ...lastFailure });
       return NextResponse.json({ error: "The playback source search failed." }, { status: 502 });
     }
 
     const rankedCandidates = requestedVideoId
-      ? [{ id: { videoId: requestedVideoId }, snippet: { title, channelTitle: artist } }]
+      ? [{ id: { videoId: requestedVideoId }, snippet: { title: safeTitle, channelTitle: safeArtist } }]
       : [...candidates]
         .filter((candidate) => /^[A-Za-z0-9_-]{11}$/.test(candidate.id?.videoId ?? ""))
-        .sort((left, right) => candidateScore(right, title, artist) - candidateScore(left, title, artist));
+        .sort((left, right) => candidateScore(right, safeTitle, safeArtist) - candidateScore(left, safeTitle, safeArtist));
     if (rankedCandidates.length === 0) {
-      console.error("[PlaybackResolver] YouTube returned no video candidates", { title, artist, items: candidates.length });
+      console.error("[PlaybackResolver] No playable candidates found", { title: safeTitle, artist: safeArtist, items: candidates.length });
       return NextResponse.json({ error: "No playable source was found for this track." }, { status: 502 });
     }
 
@@ -305,7 +366,7 @@ export async function POST(request: Request) {
         });
 
         // Persist to Supabase Storage and database
-        const cachedSourceUrl = await persistAudioToSupabase(videoId, title, artist, stream.url);
+        const cachedSourceUrl = await persistAudioToSupabase(videoId, safeTitle, safeArtist, stream.url);
 
         return NextResponse.json({ status: "ready", sourceUrl: cachedSourceUrl, videoId });
       }
