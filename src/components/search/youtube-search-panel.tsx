@@ -128,8 +128,8 @@ function extractResults(payload: YouTubeSearchPayload): YouTubeResult[] {
   });
 
   let assigned = false;
-  return sorted.map((item, idx) => {
-    if (!assigned && (isOfficialStudioTrack(item) || idx === 0)) {
+  return sorted.map((item) => {
+    if (!assigned && isOfficialStudioTrack(item)) {
       assigned = true;
       return { ...item, isSynced: true };
     }
@@ -314,6 +314,7 @@ function toTrack(result: YouTubeResult): Track {
     album: "YouTube",
     artwork: result.thumbnail,
     duration: 0,
+    isSynced: result.isSynced,
   };
 }
 

@@ -7,6 +7,7 @@ export interface Track {
   duration: number;
   audioUrl?: string;
   videoId?: string;
+  isSynced?: boolean;
 }
 
 export interface Album {

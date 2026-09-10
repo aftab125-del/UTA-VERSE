@@ -185,8 +185,13 @@ export function FullScreenPlayer() {
   }, [currentTrack, duration]);
 
   const effectivePosition = scrubPosition !== null ? scrubPosition : position;
+  const effectiveDuration = duration > 0 ? duration : (currentTrack?.duration ?? 0);
   const hasSyncedLyrics = Boolean(lyricsData?.syncedLyrics && lyricsData.syncedLyrics.length > 0);
-  const canSync = Boolean(hasSyncedLyrics && isSyncValid(lyricsData!.syncedLyrics, duration, lyricsData?.duration));
+  const canSync = Boolean(
+    hasSyncedLyrics &&
+    currentTrack?.isSynced !== false &&
+    isSyncValid(lyricsData!.syncedLyrics, effectiveDuration, lyricsData?.duration)
+  );
   const hasPlainLyrics = Boolean(lyricsData?.plainLyrics);
   const isInstrumental = Boolean(lyricsData?.instrumental);
 
@@ -460,18 +465,16 @@ export function FullScreenPlayer() {
             <div className="fullscreen-player__lyrics-header">
               <div className="fullscreen-player__lyrics-title-group">
                 <h3 className="fullscreen-player__lyrics-title">Lyrics</h3>
-                {hasSyncedLyrics && (
+                {hasSyncedLyrics && canSync && (
                   <span
                     className="fullscreen-player__synced-badge"
                     style={{
-                      borderColor: canSync
-                        ? (palette?.dominantHex ?? "rgba(169, 139, 255, 0.5)")
-                        : "rgba(255, 255, 255, 0.25)",
-                      color: canSync ? (palette?.accent ?? "#ffffff") : "rgba(255, 255, 255, 0.75)",
+                      borderColor: palette?.dominantHex ?? "rgba(169, 139, 255, 0.5)",
+                      color: palette?.accent ?? "#ffffff",
                     }}
-                    title={canSync ? "Lyrics synchronized to track" : "Manual scrolling mode"}
+                    title="Lyrics synchronized to track"
                   >
-                    {canSync ? "Synchronized" : "Scrollable"}
+                    Synchronized
                   </span>
                 )}
               </div>
@@ -955,9 +958,9 @@ export function FullScreenPlayer() {
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M19 3H9c-1.1 0-2 .9-2 2v9.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h10v7.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V5c0-1.1-.9-2-2-2z" />
               </svg>
-              {hasSyncedLyrics && (
-                <span className={`fullscreen-player__mobile-sync-badge${canSync ? " fullscreen-player__mobile-sync-badge--synced" : ""}`}>
-                  {canSync ? "♪ Synced" : "Scrollable"}
+              {hasSyncedLyrics && canSync && (
+                <span className="fullscreen-player__mobile-sync-badge fullscreen-player__mobile-sync-badge--synced">
+                  ♪ Synced
                 </span>
               )}
             </div>

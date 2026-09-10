@@ -273,7 +273,7 @@ export function parseLrc(lrcContent: string): SyncedLine[] {
 
 /**
  * Checks whether synchronized lyrics can be reliably synchronized to track playback.
- * If timestamps are invalid or duration mismatches the studio release (>10s difference),
+ * If timestamps are invalid or duration mismatches the studio release (>3.5s difference),
  * returns false so the player displays the lyrics in pure scroll-only mode without forced jumps.
  */
 export function isSyncValid(
@@ -284,9 +284,12 @@ export function isSyncValid(
   if (!syncedLyrics || syncedLyrics.length < 2) return false;
 
   // If studio duration from LRCLIB is known, compare against playing audio duration.
-  // A discrepancy of > 10s indicates an extended video cut, intro dialogue skit, or different arrangement.
-  if (lyricsDuration && lyricsDuration > 0 && trackDuration > 0) {
-    if (Math.abs(trackDuration - lyricsDuration) > 10) {
+  // A discrepancy of > 3.5s indicates an extended video cut, intro dialogue skit, or different arrangement.
+  if (lyricsDuration && lyricsDuration > 0) {
+    if (!trackDuration || trackDuration <= 0) {
+      return false;
+    }
+    if (Math.abs(trackDuration - lyricsDuration) > 3.5) {
       return false;
     }
   }
@@ -302,13 +305,13 @@ export function isSyncValid(
     if (firstTime >= trackDuration) return false;
 
     // If the last lyric is far past the track duration (e.g. full 5:34 album track lyrics on a 3:48 video cut)
-    // Allow up to 12 seconds of trailing outro padding
-    if (lastTime > trackDuration + 12) {
+    // Allow up to 4 seconds of trailing outro padding
+    if (lastTime > trackDuration + 4) {
       return false;
     }
 
-    // If track is long (> 90s), but last lyric ends in first 35% of track (truncated or cut lyrics)
-    if (trackDuration > 90 && lastTime < trackDuration * 0.35) {
+    // If track is long (> 90s), but last lyric ends in first 40% of track (truncated or cut lyrics)
+    if (trackDuration > 90 && lastTime < trackDuration * 0.4) {
       return false;
     }
   }
@@ -325,7 +328,7 @@ export function isOfficialStudioTrack(item: { title: string; channelTitle?: stri
   const channel = (item.channelTitle || "").toLowerCase();
 
   // Negative indicators (mismatched audio versions or video cuts)
-  if (/\b(music\s*video|official\s*video|short\s*film|\bvideo\b|\blive\b|\bconcert\b|\bcover\b|\bremix\b|\bslowed\b|\breverb\b|1\s*hour|8d\s*audio)\b/i.test(title)) {
+  if (/\b(music\s*video|official\s*video|short\s*film|\bmv\b|\bvideo\b|\blive\b|\bconcert\b|\bcover\b|\bremix\b|\bslowed\b|\breverb\b|1\s*hour|8d\s*audio)\b/i.test(title)) {
     return false;
   }
 
@@ -363,7 +366,7 @@ export function scoreTrackForStudioRanking(item: { title: string; channelTitle?:
   }
 
   // Penalize videos with movie skits, live performances, or fan edits
-  if (/\b(music\s*video|official\s*video|short\s*film)\b/i.test(title)) {
+  if (/\b(music\s*video|official\s*video|short\s*film|\bmv\b)\b/i.test(title)) {
     score -= 20;
   }
   if (/\b(live|concert|tour)\b/i.test(title)) {
