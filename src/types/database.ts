@@ -141,6 +141,18 @@ export type Database = {
         Update: { id?: string; query?: string; results?: Json; fetched_at?: string };
         Relationships: [];
       };
+      search_cache: {
+        Row: { query: string; results: Json; created_at: string };
+        Insert: { query: string; results?: Json; created_at?: string };
+        Update: { query?: string; results?: Json; created_at?: string };
+        Relationships: [];
+      };
+      playback_cache: {
+        Row: { video_id: string; title: string; artist: string; audio_url: string; duration: number; file_size: number; created_at: string };
+        Insert: { video_id: string; title?: string; artist?: string; audio_url: string; duration?: number; file_size?: number; created_at?: string };
+        Update: { video_id?: string; title?: string; artist?: string; audio_url?: string; duration?: number; file_size?: number; created_at?: string };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
