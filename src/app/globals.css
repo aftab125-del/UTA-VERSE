@@ -2442,6 +2442,21 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   transform: scale(1.03);
 }
 
+.fullscreen-player__line--scrollable {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82) !important;
+  opacity: 0.88 !important;
+  transform: none !important;
+  cursor: pointer;
+}
+
+.fullscreen-player__line--scrollable:hover {
+  color: #ffffff !important;
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .fullscreen-player__plain-lyrics {
   padding: 2rem 1rem;
   font-size: 1.2rem;
@@ -3029,6 +3044,20 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     opacity: 1 !important;
     transform: scale(1.02);
     text-shadow: 0 0 28px rgba(255, 255, 255, 0.35);
+  }
+
+  .fullscreen-player__phase2-line--scrollable {
+    font-size: 1.55rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.82) !important;
+    opacity: 0.88 !important;
+    transform: none !important;
+    cursor: pointer;
+  }
+
+  .fullscreen-player__phase2-line--scrollable:hover {
+    color: #ffffff !important;
+    opacity: 1 !important;
   }
 
   /* Phase 2 Timeline */

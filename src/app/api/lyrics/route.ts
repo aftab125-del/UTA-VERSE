@@ -106,19 +106,22 @@ function scoreCandidate(
     }
   }
 
-  // 4. Duration proximity tolerance (within 5-10s reasonable leeway)
+  // 4. Duration proximity tolerance (ensures video cut vs album version discrepancy is penalized)
   if (targetDuration && targetDuration > 0 && candidate.duration && candidate.duration > 0) {
     const diff = Math.abs(candidate.duration - targetDuration);
     if (diff <= 3) {
-      score += 30;
+      score += 35;
     } else if (diff <= 8) {
-      score += 20;
+      score += 25;
     } else if (diff <= 15) {
-      score += 10;
-    } else if (diff <= 30) {
+      score += 12;
+    } else if (diff <= 25) {
       score += 0;
-    } else if (diff > 60) {
-      score -= 30;
+    } else if (diff <= 45) {
+      score -= 25;
+    } else {
+      // Severe mismatch (> 45s difference, e.g. short video cut vs album version)
+      score -= 60;
     }
   }
 

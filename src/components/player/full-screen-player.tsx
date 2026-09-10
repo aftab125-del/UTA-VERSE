@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { usePlayerStore } from "@/stores/player-store";
-import { fetchLyrics, findCurrentLyricIndex, type LyricsData, type SyncedLine } from "@/lib/music/lyrics";
+import {
+  fetchLyrics,
+  findCurrentLyricIndex,
+  isSyncValid,
+  type LyricsData,
+  type SyncedLine,
+} from "@/lib/music/lyrics";
 import { extractThemePalette, type ThemePalette } from "@/lib/utils/color-extractor";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
 import { useUser } from "@/hooks/use-user";
@@ -42,11 +48,40 @@ export function FullScreenPlayer() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [isInfinite, setIsInfinite] = useState(false);
 
+  // Timeline scrubbing state
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
+
+  // User manual scroll lock (prevents auto-scroll fighting user)
+  const userScrolledRef = useRef(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
   const mobileLyricsContainerRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLDivElement>(null);
   const mobileActiveLineRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleUserScroll = useCallback(() => {
+    userScrolledRef.current = true;
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      userScrolledRef.current = false;
+    }, 4500);
+  }, []);
+
+  const handleSeek = useCallback(
+    (targetTime: number) => {
+      userScrolledRef.current = false;
+      seek(targetTime);
+    },
+    [seek]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
+  }, []);
 
   // Initialize likes when user loads
   useEffect(() => {
@@ -126,7 +161,7 @@ export function FullScreenPlayer() {
       }
     });
 
-    void fetchLyrics(currentTrack)
+    void fetchLyrics(currentTrack, duration)
       .then((res) => {
         if (isCancelled) return;
         setLyricsLoading(false);
@@ -147,44 +182,72 @@ export function FullScreenPlayer() {
     return () => {
       isCancelled = true;
     };
-  }, [currentTrack]);
+  }, [currentTrack, duration]);
 
-  // Find active synchronized line index
-  const activeIndex = lyricsData?.syncedLyrics?.length
-    ? findCurrentLyricIndex(lyricsData.syncedLyrics, position)
-    : -1;
+  const effectivePosition = scrubPosition !== null ? scrubPosition : position;
+  const hasSyncedLyrics = Boolean(lyricsData?.syncedLyrics && lyricsData.syncedLyrics.length > 0);
+  const canSync = Boolean(hasSyncedLyrics && isSyncValid(lyricsData!.syncedLyrics, duration));
+  const hasPlainLyrics = Boolean(lyricsData?.plainLyrics);
+  const isInstrumental = Boolean(lyricsData?.instrumental);
+
+  // Active synchronized line index is ONLY computed if lyrics can reliably sync!
+  // If canSync is false, activeIndex is -1 so lyrics don't jump around and remain peacefully scrollable.
+  const activeIndex =
+    canSync && lyricsData?.syncedLyrics?.length
+      ? findCurrentLyricIndex(lyricsData.syncedLyrics, effectivePosition)
+      : -1;
 
   // Auto-scroll to active lyric line smoothly on desktop (scoped strictly to lyrics container)
   useEffect(() => {
-    if (activeIndex >= 0 && activeLineRef.current && lyricsContainerRef.current) {
+    if (!canSync || activeIndex < 0) return;
+    if (userScrolledRef.current) return;
+
+    if (activeLineRef.current && lyricsContainerRef.current) {
       const container = lyricsContainerRef.current;
       const activeEl = activeLineRef.current;
-      const targetTop = activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2;
+      const containerRect = container.getBoundingClientRect();
+      const activeRect = activeEl.getBoundingClientRect();
+      const currentScrollTop = container.scrollTop;
+      const targetTop =
+        activeRect.top -
+        containerRect.top +
+        currentScrollTop -
+        container.clientHeight / 2 +
+        activeRect.height / 2;
+
       container.scrollTo({
         top: Math.max(0, targetTop),
         behavior: "smooth",
       });
     }
-  }, [activeIndex]);
+  }, [activeIndex, canSync]);
 
   // Auto-scroll to active lyric line smoothly on mobile (scoped strictly to lyrics container)
   useEffect(() => {
-    if (activeIndex >= 0 && mobileActiveLineRef.current && mobileLyricsContainerRef.current) {
+    if (!canSync || activeIndex < 0) return;
+    if (userScrolledRef.current) return;
+
+    if (mobileActiveLineRef.current && mobileLyricsContainerRef.current) {
       const container = mobileLyricsContainerRef.current;
       const activeEl = mobileActiveLineRef.current;
-      const targetTop = activeEl.offsetTop - container.clientHeight / 2 + activeEl.clientHeight / 2;
+      const containerRect = container.getBoundingClientRect();
+      const activeRect = activeEl.getBoundingClientRect();
+      const currentScrollTop = container.scrollTop;
+      const targetTop =
+        activeRect.top -
+        containerRect.top +
+        currentScrollTop -
+        container.clientHeight / 2 +
+        activeRect.height / 2;
+
       container.scrollTo({
         top: Math.max(0, targetTop),
         behavior: "smooth",
       });
     }
-  }, [activeIndex]);
+  }, [activeIndex, canSync]);
 
   if (!isExpanded || !currentTrack) return null;
-
-  const hasSyncedLyrics = Boolean(lyricsData?.syncedLyrics && lyricsData.syncedLyrics.length > 0);
-  const hasPlainLyrics = Boolean(lyricsData?.plainLyrics);
-  const isInstrumental = Boolean(lyricsData?.instrumental);
 
   function cycleRepeat() {
     const modes: Array<"off" | "all" | "one"> = ["off", "all", "one"];
@@ -199,7 +262,7 @@ export function FullScreenPlayer() {
       : activeIndex >= 0 && lyricsData?.syncedLyrics?.[activeIndex]?.text
       ? lyricsData.syncedLyrics[activeIndex].text
       : hasSyncedLyrics || hasPlainLyrics
-      ? "Finding the right words"
+      ? "Lyrics available (tap to view)"
       : "No lyrics available";
 
   return (
@@ -303,20 +366,37 @@ export function FullScreenPlayer() {
 
             {/* Timeline Seek Bar */}
             <div className="fullscreen-player__timeline">
-              <span className="fullscreen-player__time">{formatTime(position)}</span>
+              <span className="fullscreen-player__time">
+                {formatTime(scrubPosition !== null ? scrubPosition : position)}
+              </span>
               <input
                 type="range"
                 className="fullscreen-player__slider"
                 min="0"
                 max={duration || 1}
-                value={Math.min(position, duration || 1)}
-                onChange={(e) => seek(Number(e.target.value))}
+                value={scrubPosition !== null ? scrubPosition : Math.min(position, duration || 1)}
+                onPointerDown={() => {
+                  userScrolledRef.current = false;
+                }}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setScrubPosition(val);
+                  seek(val);
+                }}
+                onPointerUp={() => {
+                  if (scrubPosition !== null) {
+                    seek(scrubPosition);
+                    setScrubPosition(null);
+                  }
+                }}
                 aria-label="Track progress"
                 style={{
                   accentColor: palette?.dominantHex ?? "#8b5cf6",
                 }}
               />
-              <span className="fullscreen-player__time">{formatRemainingTime(position, duration)}</span>
+              <span className="fullscreen-player__time">
+                {formatRemainingTime(scrubPosition !== null ? scrubPosition : position, duration)}
+              </span>
             </div>
 
             {/* Transport Controls */}
@@ -382,11 +462,14 @@ export function FullScreenPlayer() {
                   <span
                     className="fullscreen-player__synced-badge"
                     style={{
-                      borderColor: palette?.dominantHex ?? "rgba(169, 139, 255, 0.5)",
-                      color: palette?.accent ?? "#ffffff",
+                      borderColor: canSync
+                        ? (palette?.dominantHex ?? "rgba(169, 139, 255, 0.5)")
+                        : "rgba(255, 255, 255, 0.25)",
+                      color: canSync ? (palette?.accent ?? "#ffffff") : "rgba(255, 255, 255, 0.75)",
                     }}
+                    title={canSync ? "Lyrics synchronized to track" : "Manual scrolling mode"}
                   >
-                    Synchronized
+                    {canSync ? "Synchronized" : "Scrollable"}
                   </span>
                 )}
               </div>
@@ -395,6 +478,9 @@ export function FullScreenPlayer() {
             <div
               ref={lyricsContainerRef}
               className="fullscreen-player__lyrics-scroll"
+              onWheel={handleUserScroll}
+              onTouchMove={handleUserScroll}
+              onPointerDown={handleUserScroll}
               tabIndex={0}
               role="region"
               aria-label="Song lyrics"
@@ -416,15 +502,19 @@ export function FullScreenPlayer() {
               {!lyricsLoading && !isInstrumental && hasSyncedLyrics && lyricsData?.syncedLyrics && (
                 <div className="fullscreen-player__synced-lines">
                   {lyricsData.syncedLyrics.map((line: SyncedLine, index: number) => {
-                    const isActive = index === activeIndex;
+                    const isActive = canSync && index === activeIndex;
                     return (
                       <div
                         key={`${line.time}-${index}`}
                         ref={isActive ? activeLineRef : null}
-                        onClick={() => seek(line.time)}
-                        className={`fullscreen-player__line${isActive ? " fullscreen-player__line--active" : ""}`}
+                        onClick={() => handleSeek(line.time)}
+                        className={`fullscreen-player__line${isActive ? " fullscreen-player__line--active" : ""}${!canSync ? " fullscreen-player__line--scrollable" : ""}`}
                         style={{
-                          color: isActive ? (palette?.accent ?? "#ffffff") : undefined,
+                          color: isActive
+                            ? (palette?.accent ?? "#ffffff")
+                            : !canSync
+                            ? "rgba(255, 255, 255, 0.85)"
+                            : undefined,
                           textShadow: isActive
                             ? `0 0 24px ${palette?.glowColor ?? "rgba(139, 92, 246, 0.6)"}`
                             : undefined,
@@ -581,14 +671,27 @@ export function FullScreenPlayer() {
                   className="fullscreen-player__phase1-slider"
                   min="0"
                   max={duration || 1}
-                  value={Math.min(position, duration || 1)}
-                  onChange={(e) => seek(Number(e.target.value))}
+                  value={scrubPosition !== null ? scrubPosition : Math.min(position, duration || 1)}
+                  onPointerDown={() => {
+                    userScrolledRef.current = false;
+                  }}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setScrubPosition(val);
+                    seek(val);
+                  }}
+                  onPointerUp={() => {
+                    if (scrubPosition !== null) {
+                      seek(scrubPosition);
+                      setScrubPosition(null);
+                    }
+                  }}
                   aria-label="Track progress"
                   style={{ accentColor: "#ffffff" }}
                 />
                 <div className="fullscreen-player__time-row">
-                  <span>{formatTime(position)}</span>
-                  <span>{formatRemainingTime(position, duration)}</span>
+                  <span>{formatTime(scrubPosition !== null ? scrubPosition : position)}</span>
+                  <span>{formatRemainingTime(scrubPosition !== null ? scrubPosition : position, duration)}</span>
                 </div>
               </div>
 
@@ -856,6 +959,9 @@ export function FullScreenPlayer() {
             <div
               ref={mobileLyricsContainerRef}
               className="fullscreen-player__phase2-lyrics-scroll"
+              onWheel={handleUserScroll}
+              onTouchMove={handleUserScroll}
+              onPointerDown={handleUserScroll}
               tabIndex={0}
               role="region"
               aria-label="Song lyrics"
@@ -877,13 +983,23 @@ export function FullScreenPlayer() {
               {!lyricsLoading && !isInstrumental && hasSyncedLyrics && lyricsData?.syncedLyrics && (
                 <div className="fullscreen-player__phase2-synced-lines">
                   {lyricsData.syncedLyrics.map((line: SyncedLine, index: number) => {
-                    const isActive = index === activeIndex;
+                    const isActive = canSync && index === activeIndex;
                     return (
                       <div
                         key={`m-${line.time}-${index}`}
                         ref={isActive ? mobileActiveLineRef : null}
-                        onClick={() => seek(line.time)}
-                        className={`fullscreen-player__phase2-line${isActive ? " fullscreen-player__phase2-line--active" : ""}`}
+                        onClick={() => handleSeek(line.time)}
+                        className={`fullscreen-player__phase2-line${isActive ? " fullscreen-player__phase2-line--active" : ""}${!canSync ? " fullscreen-player__phase2-line--scrollable" : ""}`}
+                        style={{
+                          color: isActive
+                            ? (palette?.accent ?? "#ffffff")
+                            : !canSync
+                            ? "rgba(255, 255, 255, 0.88)"
+                            : undefined,
+                          textShadow: isActive
+                            ? `0 0 28px ${palette?.glowColor ?? "rgba(139, 92, 246, 0.6)"}`
+                            : undefined,
+                        }}
                         role="button"
                         tabIndex={0}
                         title={`Jump to ${formatTime(line.time)}`}
@@ -917,21 +1033,34 @@ export function FullScreenPlayer() {
                 className="fullscreen-player__phase1-slider"
                 min="0"
                 max={duration || 1}
-                value={Math.min(position, duration || 1)}
-                onChange={(e) => seek(Number(e.target.value))}
+                value={scrubPosition !== null ? scrubPosition : Math.min(position, duration || 1)}
+                onPointerDown={() => {
+                  userScrolledRef.current = false;
+                }}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setScrubPosition(val);
+                  seek(val);
+                }}
+                onPointerUp={() => {
+                  if (scrubPosition !== null) {
+                    seek(scrubPosition);
+                    setScrubPosition(null);
+                  }
+                }}
                 aria-label="Track progress"
                 style={{ accentColor: "#ffffff" }}
               />
               <div className="fullscreen-player__time-row">
-                <span>{formatTime(position)}</span>
-                <span>{formatRemainingTime(position, duration)}</span>
+                <span>{formatTime(scrubPosition !== null ? scrubPosition : position)}</span>
+                <span>{formatRemainingTime(scrubPosition !== null ? scrubPosition : position, duration)}</span>
               </div>
             </div>
 
             {/* Bottom Pill Bar (Lyrics by LRCLIB + Close Button) */}
             <div className="fullscreen-player__phase2-footer">
               <div className="fullscreen-player__provider-pill">
-                Lyrics by LRCLIB
+                Lyrics by LRCLIB{canSync ? " • Synced" : " • Scrollable"}
               </div>
               <button
                 type="button"
