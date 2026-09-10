@@ -39,8 +39,8 @@ function processSearchResults(items: unknown[]): SearchItem[] {
 
   // Assign `isSynced: true` strictly to the top qualifying studio track
   let assigned = false;
-  return valid.map((item, idx) => {
-    if (!assigned && (isOfficialStudioTrack(item) || idx === 0)) {
+  return valid.map((item) => {
+    if (!assigned && isOfficialStudioTrack(item)) {
       assigned = true;
       return { ...item, isSynced: true };
     }
