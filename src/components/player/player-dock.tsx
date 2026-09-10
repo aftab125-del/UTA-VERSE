@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { usePlayerStore } from "@/stores/player-store";
 import { QueuePanel } from "@/components/player/queue-panel";
+import { FullScreenPlayer } from "@/components/player/full-screen-player";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
 import { GlassSurface } from "@/components/reactbits/GlassSurface";
 
@@ -28,6 +29,7 @@ export function PlayerDock() {
   const error = usePlayerStore((state) => state.error);
   const isLoading = usePlayerStore((state) => state.isLoading);
   const isResolving = usePlayerStore((state) => state.isResolving);
+  const setIsExpanded = usePlayerStore((state) => state.setIsExpanded);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -75,8 +77,15 @@ export function PlayerDock() {
 
             {/* Center: Track info on top of Play/Pause + Transport & Timeline */}
             <div className="player-dock__center">
-              {/* Centered Track Info: Cover + Title + Artist */}
-              <div className="player-dock__track">
+              {/* Centered Track Info: Cover + Title + Artist (Click to expand into full player & lyrics) */}
+              <div
+                className="player-dock__track"
+                onClick={() => hasTrack && setIsExpanded(true)}
+                role={hasTrack ? "button" : undefined}
+                tabIndex={hasTrack ? 0 : undefined}
+                title={hasTrack ? "Open full player & lyrics" : undefined}
+                style={hasTrack ? { cursor: "pointer" } : undefined}
+              >
                 {currentTrack ? (
                   <ArtworkTile artwork={currentTrack.artwork} title={currentTrack.title} size="small" />
                 ) : (
@@ -168,6 +177,23 @@ export function PlayerDock() {
                 />
               </div>
 
+              {/* Lyrics / Expand Button */}
+              <button
+                type="button"
+                className="icon-button player-dock__lyrics-btn"
+                onClick={() => setIsExpanded(true)}
+                disabled={!hasTrack}
+                aria-label="Lyrics & Full Player"
+                title="Lyrics & Full Player"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 18V5l12-2v13" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="16" r="3" />
+                </svg>
+                <span className="player-dock__lyrics-label">Lyrics</span>
+              </button>
+
               {/* More Options Button (three dots) */}
               <div className="player-dock__more-container">
                 <button
@@ -183,6 +209,18 @@ export function PlayerDock() {
 
                 {menuOpen && hasTrack && (
                   <div className="player-dock__menu" role="menu" aria-label="Playback options">
+                    <button
+                      type="button"
+                      className="player-dock__menu-btn player-dock__menu-btn--lyrics"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setIsExpanded(true);
+                      }}
+                    >
+                      <span className="player-dock__menu-icon">♪</span>
+                      <span>Lyrics & Full Player</span>
+                    </button>
+                    <div className="player-dock__menu-divider" />
                     {currentTrack && (
                       <>
                         <AddToPlaylistButton
@@ -253,6 +291,7 @@ export function PlayerDock() {
         </GlassSurface>
       </footer>
       <QueuePanel />
+      <FullScreenPlayer />
     </>
   );
 }
