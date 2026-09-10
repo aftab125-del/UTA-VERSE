@@ -19,8 +19,59 @@ export interface LyricsData {
 }
 
 export type LyricsResponse =
-  | { success: true; lyrics: LyricsData }
+  | { success: true; lyrics: LyricsData; method?: string }
   | { success: false; notFound: boolean; message: string };
+
+const KNOWN_LABELS = new Set([
+  "yrf",
+  "yrf music",
+  "t-series",
+  "tseries",
+  "t-series apna punjab",
+  "t-series bhakti sagar",
+  "sony music india",
+  "sonymusicindiavevo",
+  "sony music",
+  "zee music company",
+  "zee music",
+  "tips official",
+  "tips",
+  "tips music",
+  "saregama",
+  "saregama music",
+  "speed records",
+  "eros now",
+  "eros now music",
+  "venus",
+  "venus music",
+  "aditya music",
+  "geetha arts",
+  "lahari music",
+  "think music india",
+  "think music",
+  "rajshri",
+  "times music",
+  "white hill music",
+  "geet mp3",
+  "dm - desi melodies",
+  "vyrloriginalsvideo",
+  "vyrloriginals",
+  "universal music",
+  "warner music",
+]);
+
+/**
+ * Checks if a name is likely a record label or distribution channel rather than a solo artist
+ */
+export function isLikelyLabelOrChannel(name: string): boolean {
+  if (!name) return false;
+  const clean = name.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+  if (KNOWN_LABELS.has(clean)) return true;
+  for (const label of KNOWN_LABELS) {
+    if (clean === label.replace(/[^a-z0-9]/g, "")) return true;
+  }
+  return false;
+}
 
 /**
  * Strips common YouTube video/audio noise from titles and channel names
@@ -29,37 +80,63 @@ export type LyricsResponse =
 export function cleanTrackMetadata(
   rawTitle: string,
   rawArtist: string
-): { trackName: string; artistName: string } {
+): { trackName: string; artistName: string; isChannelArtist: boolean } {
   let title = (rawTitle || "").trim();
   let artist = (rawArtist || "").trim();
 
-  // Strip common artist noise suffixes like " - Topic", "VEVO"
+  // 1. Decode HTML entities
+  title = title
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  artist = artist
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+
+  // 2. Clean artist noise suffixes like " - Topic", "VEVO", "Official", etc.
   artist = artist
     .replace(/\s*-\s*Topic$/i, "")
     .replace(/VEVO$/i, "")
+    .replace(
+      /\s*(?:Official\s*(?:Music\s*)?(?:Channel|Page)?|Channel|Music|Records|Entertainment|Films|Company|Studios)$/i,
+      ""
+    )
     .trim();
 
-  // If title has "Artist - Song", extract them
+  // 3. Strip pipes early if present:
+  // e.g., "Falak Tak Full Song | Tashan | Akshay Kumar | Udit Narayan"
+  // e.g., "Haareya Song | Meri Pyaari Bindu | Ayushmann Khurrana | Arijit Singh"
+  if (title.includes("|")) {
+    const pipeParts = title.split(/\s*\|\s*/);
+    title = pipeParts[0].trim();
+  }
+
+  // 4. Handle "Artist - Song" or "Song - Movie"
   const dashMatch = title.match(/^(.+?)\s+[-–—:]\s+(.+)$/);
   if (dashMatch) {
-    const potentialArtist = dashMatch[1].trim();
-    const potentialTitle = dashMatch[2].trim();
+    const left = dashMatch[1].trim();
+    const right = dashMatch[2].trim();
 
     const normArtist = artist.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const normPotential = potentialArtist.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const normLeft = left.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+    // If channel/artist matches left, left is artist
     if (
       !normArtist ||
       normArtist === "youtube" ||
-      normPotential.includes(normArtist) ||
-      normArtist.includes(normPotential)
+      normLeft.includes(normArtist) ||
+      normArtist.includes(normLeft)
     ) {
-      artist = potentialArtist;
-      title = potentialTitle;
+      artist = left;
+      title = right;
     }
   }
 
-  // Clean title: remove quotes e.g. Dominic Fike "Babydoll" -> Babydoll
+  // 5. Clean title: remove quotes e.g. Dominic Fike "Babydoll" -> Babydoll
   const quoteMatch = title.match(/^(.+?)\s+["“](.+?)["”]$/);
   if (quoteMatch) {
     const preQuote = quoteMatch[1].trim();
@@ -67,33 +144,80 @@ export function cleanTrackMetadata(
     const normArtist = artist.toLowerCase().replace(/[^a-z0-9]/g, "");
     const normPreQuote = preQuote.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    if (!normArtist || normArtist === "youtube" || normArtist === normPreQuote) {
+    if (
+      !normArtist ||
+      normArtist === "youtube" ||
+      normArtist === normPreQuote ||
+      isLikelyLabelOrChannel(normArtist)
+    ) {
       artist = preQuote;
       title = inQuote;
     }
   }
 
-  // Remove common parenthetical/bracketed noise in title:
-  // (Official Music Video), [Official Video], (Audio), (Lyric Video), (Lyrics), (Visualizer), etc.
-  title = title
-    .replace(
-      /[\(\[\{]\s*(?:official\s+)?(?:music\s+)?(?:video|audio|visualizer|lyric\s+video|lyrics|hd|4k|mv|remastered|live|explicit)\s*[\)\]\}]/gi,
-      ""
-    )
-    .replace(/[\(\[\{]\s*(?:feat\.?|ft\.?|featuring)\s+[^)\]}]+[\)\]\}]/gi, "")
-    .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+[\w\s&,.-]+/gi, "")
-    .replace(/[\(\[\{]\s*prod\.?\s+by\s+[^)\]}]+[\)\]\}]/gi, "")
-    .replace(/["“"”]/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  // 6. Remove parenthetical/bracketed noise:
+  // (From "Movie"), [From "Movie"], (From Movie)
+  title = title.replace(
+    /[\(\[\{]\s*(?:from|in|soundtrack|ost)\s+["“'«]?[^()\[\]{}]+?["”'»]?\s*[\)\]\}]/gi,
+    ""
+  );
 
-  // Strip feature mentions from artist name as well for cleaner lookup
+  // (Original Version), (Full Song), (Full Audio), (Full Video), etc.
+  title = title.replace(
+    /[\(\[\{]\s*(?:original\s+(?:version|motion\s+picture\s+soundtrack|mix|audio)|full\s+(?:song|video|audio|track)|audio\s+song|video\s+song|lyrical(?:\s+video|\s+song)?)\s*[\)\]\}]/gi,
+    ""
+  );
+
+  // Common video/audio tags: (Official Music Video), (Official Audio), (Lyrics), (Visualizer), etc.
+  title = title.replace(
+    /[\(\[\{]\s*(?:official\s+)?(?:music\s+)?(?:video|audio|visualizer|visuals|lyric\s+video|lyrics|hd|4k|8k|hq|mv|remaster(?:ed)?(?:\s+\d+)?|live(?:\s+performance|\s+at\s+[^)\]}]+)?|explicit|clean|extended(?:\s+mix|\s+version)?)\s*[\)\]\}]/gi,
+    ""
+  );
+
+  // (feat. X) / (ft. X) in title
+  title = title.replace(/[\(\[\{]\s*(?:feat\.?|ft\.?|featuring)\s+[^)\]}]+[\)\]\}]/gi, "");
+  title = title.replace(/\s*(?:feat\.?|ft\.?|featuring)\s+[\w\s&,.-]+/gi, "");
+  title = title.replace(/[\(\[\{]\s*prod\.?\s+by\s+[^)\]}]+[\)\]\}]/gi, "");
+
+  // 7. Strip inline YouTube noise words:
+  title = title.replace(
+    /\b(?:full\s+song|full\s+audio|full\s+video|video\s+song|audio\s+song|lyrical\s+song|lyric\s+video|lyrical\s+video|promo\s+song)\b/gi,
+    ""
+  );
+
+  // If title ends with " Song" (e.g. "Haareya Song" -> "Haareya"), but keep protected words like "Love Song"
+  const protectedSongTitles = new Set([
+    "love song",
+    "fight song",
+    "earth song",
+    "swan song",
+    "immigrant song",
+    "redemption song",
+    "the logical song",
+    "theme song",
+    "drinking song",
+    "our song",
+  ]);
+  if (/\b\w+\s+song$/i.test(title) && !protectedSongTitles.has(title.toLowerCase().trim())) {
+    title = title.replace(/\s+song$/i, "");
+  }
+
+  // Strip trailing hyphens or movie suffixes: e.g. "Title - Movie"
+  title = title.replace(/\s*[-–—]\s*(?:from\s+)?["“'«]?[^"”'»]+["”'»]?$/i, "");
+
+  // Remove stray quotes and clean multiple spaces
+  title = title.replace(/["“"”]/g, "").replace(/\s{2,}/g, " ").trim();
+
+  // Strip features from artist as well
   artist = artist
     .replace(/[\(\[\{]\s*(?:feat\.?|ft\.?|featuring)\s+[^)\]}]+[\)\]\}]/gi, "")
     .replace(/\s*(?:feat\.?|ft\.?|featuring)\s+[\w\s&,.-]+/gi, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 
-  return { trackName: title, artistName: artist };
+  const isChannel = isLikelyLabelOrChannel(rawArtist) || isLikelyLabelOrChannel(artist);
+
+  return { trackName: title, artistName: artist, isChannelArtist: isChannel };
 }
 
 /**
