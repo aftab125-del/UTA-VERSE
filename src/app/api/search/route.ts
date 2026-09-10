@@ -1,10 +1,52 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isOfficialStudioTrack, scoreTrackForStudioRanking } from "@/lib/music/lyrics";
+import type { Json } from "@/types/database";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
 const SEARCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export const runtime = "nodejs";
+
+interface SearchItem {
+  videoId: string;
+  title: string;
+  channelTitle: string;
+  thumbnail: string;
+  isSynced?: boolean;
+}
+
+function processSearchResults(items: unknown[]): SearchItem[] {
+  const valid: SearchItem[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Record<string, unknown>;
+    const videoId = typeof raw.videoId === "string" ? raw.videoId : "";
+    const title = typeof raw.title === "string" ? raw.title : "";
+    const channelTitle = typeof raw.channelTitle === "string" ? raw.channelTitle : "";
+    const thumbnail = typeof raw.thumbnail === "string" ? raw.thumbnail : "";
+    if (videoId && title) {
+      valid.push({ videoId, title, channelTitle, thumbnail });
+    }
+  }
+
+  if (valid.length === 0) return [];
+
+  // Sort so official studio cuts appear first
+  valid.sort((a, b) => {
+    return scoreTrackForStudioRanking(b) - scoreTrackForStudioRanking(a);
+  });
+
+  // Assign `isSynced: true` strictly to the top qualifying studio track
+  let assigned = false;
+  return valid.map((item, idx) => {
+    if (!assigned && (isOfficialStudioTrack(item) || idx === 0)) {
+      assigned = true;
+      return { ...item, isSynced: true };
+    }
+    return { ...item, isSynced: false };
+  });
+}
 
 export async function GET(request: Request) {
   const rawQuery = new URL(request.url).searchParams.get("q")?.trim() ?? "";
@@ -29,7 +71,8 @@ export async function GET(request: Request) {
 
       if (ageMs < SEARCH_CACHE_TTL_MS && hasResults) {
         console.info(`[YouTubeSearchProxy] [CACHE HIT] query="${normalizedQuery}" age=${Math.round(ageMs / 1000)}s count=${(data.results as unknown[]).length}`);
-        return NextResponse.json(data.results);
+        const processed = processSearchResults(data.results as unknown[]);
+        return NextResponse.json(processed);
       }
     }
   } catch (cacheErr) {
@@ -49,30 +92,35 @@ export async function GET(request: Request) {
 
     console.info("[YouTubeSearchProxy] Backend response", { status: response.status, query: rawQuery });
 
-    // 3. Cache valid results in Supabase asynchronously
     if (response.ok && Array.isArray(payload) && payload.length > 0) {
+      const processed = processSearchResults(payload);
+
+      // 3. Cache valid results in Supabase asynchronously
       try {
         const supabase = createSupabaseAdminClient();
-        void supabase
-          .from("search_cache")
-          .upsert(
-            {
-              query: normalizedQuery,
-              results: payload,
-              created_at: new Date().toISOString(),
-            },
-            { onConflict: "query" }
-          )
-          .then(({ error: upsertErr }) => {
-            if (upsertErr) {
-              console.warn("[YouTubeSearchProxy] Failed to write search cache:", upsertErr.message);
-            } else {
-              console.info(`[YouTubeSearchProxy] Cached ${payload.length} search results for "${normalizedQuery}"`);
-            }
+        void Promise.resolve(
+          supabase
+            .from("search_cache")
+            .upsert(
+              {
+                query: normalizedQuery,
+                results: processed as unknown as Json,
+                created_at: new Date().toISOString(),
+              },
+              { onConflict: "query" }
+            )
+        )
+          .then(() => {
+            console.info(`[YouTubeSearchProxy] Cached ${processed.length} ranked search results for "${normalizedQuery}"`);
+          })
+          .catch((upsertErr) => {
+            console.warn("[YouTubeSearchProxy] Failed to write search cache:", upsertErr);
           });
       } catch (upsertErr) {
         console.warn("[YouTubeSearchProxy] Supabase search cache write error:", upsertErr);
       }
+
+      return NextResponse.json(processed);
     }
 
     return NextResponse.json(payload, { status: response.status });

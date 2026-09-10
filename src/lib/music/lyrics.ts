@@ -273,11 +273,23 @@ export function parseLrc(lrcContent: string): SyncedLine[] {
 
 /**
  * Checks whether synchronized lyrics can be reliably synchronized to track playback.
- * If timestamps are invalid or wildly mismatch the track duration, returns false
- * so the player displays the lyrics in pure scroll-only mode without forced jumps.
+ * If timestamps are invalid or duration mismatches the studio release (>10s difference),
+ * returns false so the player displays the lyrics in pure scroll-only mode without forced jumps.
  */
-export function isSyncValid(syncedLyrics: SyncedLine[] | null, trackDuration: number): boolean {
+export function isSyncValid(
+  syncedLyrics: SyncedLine[] | null,
+  trackDuration: number,
+  lyricsDuration?: number
+): boolean {
   if (!syncedLyrics || syncedLyrics.length < 2) return false;
+
+  // If studio duration from LRCLIB is known, compare against playing audio duration.
+  // A discrepancy of > 10s indicates an extended video cut, intro dialogue skit, or different arrangement.
+  if (lyricsDuration && lyricsDuration > 0 && trackDuration > 0) {
+    if (Math.abs(trackDuration - lyricsDuration) > 10) {
+      return false;
+    }
+  }
 
   const firstTime = syncedLyrics[0].time;
   const lastTime = syncedLyrics[syncedLyrics.length - 1].time;
@@ -290,8 +302,8 @@ export function isSyncValid(syncedLyrics: SyncedLine[] | null, trackDuration: nu
     if (firstTime >= trackDuration) return false;
 
     // If the last lyric is far past the track duration (e.g. full 5:34 album track lyrics on a 3:48 video cut)
-    // Allow up to 18 seconds of trailing outro padding
-    if (lastTime > trackDuration + 18) {
+    // Allow up to 12 seconds of trailing outro padding
+    if (lastTime > trackDuration + 12) {
       return false;
     }
 
@@ -302,6 +314,66 @@ export function isSyncValid(syncedLyrics: SyncedLine[] | null, trackDuration: nu
   }
 
   return true;
+}
+
+/**
+ * Checks if a search result represents an official studio audio cut
+ * (e.g., YouTube Music Topic release or official studio audio).
+ */
+export function isOfficialStudioTrack(item: { title: string; channelTitle?: string }): boolean {
+  const title = (item.title || "").toLowerCase();
+  const channel = (item.channelTitle || "").toLowerCase();
+
+  // Negative indicators (mismatched audio versions or video cuts)
+  if (/\b(music\s*video|official\s*video|short\s*film|\bvideo\b|\blive\b|\bconcert\b|\bcover\b|\bremix\b|\bslowed\b|\breverb\b|1\s*hour|8d\s*audio)\b/i.test(title)) {
+    return false;
+  }
+
+  // Topic channels are YouTube Music's 100% studio master audio tracks provided directly by record labels
+  if (channel.endsWith(" - topic") || channel.endsWith(" topic")) {
+    return true;
+  }
+
+  // Explicit audio indicators
+  if (/\b(official\s*audio|official\s*track|\baudio\b)\b/i.test(title)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Scores a search candidate for ranking studio tracks at the top.
+ */
+export function scoreTrackForStudioRanking(item: { title: string; channelTitle?: string }): number {
+  const title = (item.title || "").toLowerCase();
+  const channel = (item.channelTitle || "").toLowerCase();
+  let score = 0;
+
+  if (channel.endsWith(" - topic") || channel.endsWith(" topic")) {
+    score += 100;
+  }
+  if (/\b(official\s*audio|official\s*track)\b/i.test(title)) {
+    score += 80;
+  } else if (/\baudio\b/i.test(title)) {
+    score += 50;
+  }
+  if (/\b(lyrics|lyric\s*video)\b/i.test(title)) {
+    score += 30;
+  }
+
+  // Penalize videos with movie skits, live performances, or fan edits
+  if (/\b(music\s*video|official\s*video|short\s*film)\b/i.test(title)) {
+    score -= 20;
+  }
+  if (/\b(live|concert|tour)\b/i.test(title)) {
+    score -= 60;
+  }
+  if (/\b(cover|remix|slowed|reverb|mashup|edit)\b/i.test(title)) {
+    score -= 80;
+  }
+
+  return score;
 }
 
 /**

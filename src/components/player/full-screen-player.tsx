@@ -186,7 +186,7 @@ export function FullScreenPlayer() {
 
   const effectivePosition = scrubPosition !== null ? scrubPosition : position;
   const hasSyncedLyrics = Boolean(lyricsData?.syncedLyrics && lyricsData.syncedLyrics.length > 0);
-  const canSync = Boolean(hasSyncedLyrics && isSyncValid(lyricsData!.syncedLyrics, duration));
+  const canSync = Boolean(hasSyncedLyrics && isSyncValid(lyricsData!.syncedLyrics, duration, lyricsData?.duration));
   const hasPlainLyrics = Boolean(lyricsData?.plainLyrics);
   const isInstrumental = Boolean(lyricsData?.instrumental);
 
@@ -259,10 +259,12 @@ export function FullScreenPlayer() {
   const currentLyricTeaser =
     lyricsLoading
       ? "Finding the right words…"
-      : activeIndex >= 0 && lyricsData?.syncedLyrics?.[activeIndex]?.text
+      : canSync && activeIndex >= 0 && lyricsData?.syncedLyrics?.[activeIndex]?.text
       ? lyricsData.syncedLyrics[activeIndex].text
       : hasSyncedLyrics || hasPlainLyrics
-      ? "Lyrics available (tap to view)"
+      ? canSync
+        ? "Lyrics available (tap to view)"
+        : "Lyrics available (scrollable)"
       : "No lyrics available";
 
   return (
@@ -948,11 +950,16 @@ export function FullScreenPlayer() {
               </div>
             </div>
 
-            {/* Beamed Musical Note Icon */}
-            <div className="fullscreen-player__phase2-note-icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+            {/* Beamed Musical Note Icon & Sync Status */}
+            <div className="fullscreen-player__phase2-note-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M19 3H9c-1.1 0-2 .9-2 2v9.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h10v7.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V5c0-1.1-.9-2-2-2z" />
               </svg>
+              {hasSyncedLyrics && (
+                <span className={`fullscreen-player__mobile-sync-badge${canSync ? " fullscreen-player__mobile-sync-badge--synced" : ""}`}>
+                  {canSync ? "♪ Synced" : "Scrollable"}
+                </span>
+              )}
             </div>
 
             {/* Full Synced Scrolling Lyrics Area */}

@@ -7,12 +7,14 @@ import { BorderGlow } from "@/components/reactbits/BorderGlow";
 import { ChromaGrid } from "@/components/reactbits/ChromaGrid";
 import { TrackActions } from "@/components/ui/track-actions";
 import { decodeHtmlEntities } from "@/lib/utils/html";
+import { isOfficialStudioTrack, scoreTrackForStudioRanking } from "@/lib/music/lyrics";
 
-interface YouTubeResult {
+export interface YouTubeResult {
   videoId: string;
   title: string;
   channelTitle: string;
   thumbnail: string;
+  isSynced?: boolean;
 }
 
 interface YouTubeSearchPanelProps {
@@ -75,11 +77,14 @@ function normalizeYouTubeResult(item: unknown): YouTubeResult | null {
       ? (thumbnails.default.url as string)
       : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
+  const isSynced = typeof raw.isSynced === "boolean" ? raw.isSynced : undefined;
+
   return {
     videoId,
     title,
     channelTitle,
     thumbnail,
+    isSynced,
   };
 }
 
@@ -109,7 +114,27 @@ function extractResults(payload: YouTubeSearchPayload): YouTubeResult[] {
     }
   }
 
-  return rawList.map(normalizeYouTubeResult).filter((item): item is YouTubeResult => item !== null);
+  const normalized = rawList.map(normalizeYouTubeResult).filter((item): item is YouTubeResult => item !== null);
+
+  // If already tagged with isSynced from backend, preserve
+  const hasTaggedSynced = normalized.some((item) => typeof item.isSynced === "boolean");
+  if (hasTaggedSynced) {
+    return normalized;
+  }
+
+  // Client-side fallback ranking & single-synced badge allocation
+  const sorted = [...normalized].sort((a, b) => {
+    return scoreTrackForStudioRanking(b) - scoreTrackForStudioRanking(a);
+  });
+
+  let assigned = false;
+  return sorted.map((item, idx) => {
+    if (!assigned && (isOfficialStudioTrack(item) || idx === 0)) {
+      assigned = true;
+      return { ...item, isSynced: true };
+    }
+    return { ...item, isSynced: false };
+  });
 }
 
 const VIOLET_THEMES = [
@@ -121,15 +146,16 @@ const VIOLET_THEMES = [
 
 export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProps) {
   const [query, setQuery] = useState(initialQuery);
+  const [prevInitialQuery, setPrevInitialQuery] = useState(initialQuery);
+  if (initialQuery !== prevInitialQuery) {
+    setPrevInitialQuery(initialQuery);
+    setQuery(initialQuery);
+  }
   const [results, setResults] = useState<YouTubeResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const setTrack = usePlayerStore((state) => state.setTrack);
-
-  useEffect(() => {
-    setQuery(initialQuery);
-  }, [initialQuery]);
 
   useEffect(() => {
     const normalizedQuery = query.trim();
@@ -204,7 +230,7 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
   const chromaItems = results.map((result, idx) => ({
     image: result.thumbnail,
     title: result.title,
-    subtitle: result.channelTitle,
+    subtitle: result.isSynced ? `${result.channelTitle} • ♪ Synced` : result.channelTitle,
     borderColor: VIOLET_THEMES[idx % VIOLET_THEMES.length].borderColor,
     gradient: VIOLET_THEMES[idx % VIOLET_THEMES.length].gradient,
     onClick: () => void setTrack(toTrack(result)),
@@ -310,7 +336,14 @@ function YouTubeResultCard({ result, track, onPlay }: { result: YouTubeResult; t
       <div className="youtube-result__details">
         <div className="youtube-result__info">
           <h3>{result.title}</h3>
-          <p>{result.channelTitle}</p>
+          <div className="youtube-result__meta-line">
+            <p>{result.channelTitle}</p>
+            {result.isSynced && (
+              <span className="synced-badge" title="Synchronized lyrics available">
+                <span className="synced-badge__icon" aria-hidden="true">♪</span> Synced
+              </span>
+            )}
+          </div>
         </div>
         <div className="youtube-result__actions" onClick={(e) => e.stopPropagation()}>
           <TrackActions track={track} size="small" variant="row" />
