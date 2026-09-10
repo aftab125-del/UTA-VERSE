@@ -9,7 +9,7 @@ export function RouteBackground() {
   const isMobile = useIsMobile();
   const isHome = pathname === "/";
 
-  // Ballpit is exclusive to desktop Home. On mobile, AeroShards is forced everywhere via PageBackground.
+  // Ballpit is exclusive to desktop Home. On mobile, a plain near-black background is rendered via PageBackground.
   if (isHome && !isMobile) {
     return <BallpitBackground key="ballpit-home-bg" />;
   }

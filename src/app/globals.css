@@ -503,7 +503,6 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .view-toggle__btn { padding: 0.3rem 0.65rem; border: 0; border-radius: calc(var(--radius-sm) - 2px); background: transparent; color: var(--color-muted); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: all 160ms ease; }
 .view-toggle__btn:hover { color: var(--color-ink); }
 .view-toggle__btn--active { background: rgba(169, 139, 255, 0.18); color: var(--color-accent-bright); }
-@media (max-width: 560px) { .youtube-result { grid-template-columns: 7rem 1fr; gap: 0.75rem; } .youtube-result__button { width: 7rem; } }
 
 .player-dock {
   position: fixed;
@@ -1023,6 +1022,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     max-width: 100% !important;
     padding: 1.5rem 1rem calc(10rem + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
+    overflow-x: hidden;
   }
 
   .route-content--narrow,
@@ -1128,37 +1128,125 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     box-sizing: border-box;
   }
 
-  .youtube-result {
-    grid-template-columns: 6.5rem 1fr;
-    gap: 0.6rem;
-    padding: 0.6rem;
+  .youtube-search__results {
     width: 100% !important;
-    box-sizing: border-box;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    gap: 0.5rem !important;
+    overflow: hidden !important;
+  }
+
+  .border-glow-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .border-glow-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+  }
+
+  .youtube-result {
+    grid-template-columns: 3.25rem minmax(0, 1fr) !important;
+    gap: 0.55rem !important;
+    padding: 0.45rem 0.55rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    align-items: center;
   }
 
   .youtube-result__button {
-    width: 6.5rem;
+    width: 3.25rem !important;
+    height: 3.25rem !important;
+    aspect-ratio: 1 / 1 !important;
+    flex-shrink: 0 !important;
+    border-radius: 0.35rem !important;
+    overflow: hidden !important;
+  }
+
+  .youtube-result__thumbnail {
+    width: 100% !important;
+    height: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    object-fit: cover !important;
+    border-radius: 0.35rem !important;
+  }
+
+  .youtube-result__icon {
+    width: 1.4rem !important;
+    height: 1.4rem !important;
+    font-size: 0.6rem !important;
+  }
+
+  .youtube-result__details {
+    min-width: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.35rem !important;
+    overflow: hidden !important;
   }
 
   .youtube-result__info {
-    min-width: 0;
-    flex: 1;
+    min-width: 0 !important;
+    flex: 1 1 0% !important;
+    overflow: hidden !important;
   }
 
   .youtube-result__info h3 {
-    font-size: 0.85rem;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 0.84rem !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+    margin: 0 !important;
+    color: var(--color-ink) !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    max-width: 100% !important;
   }
 
   .youtube-result__info p {
-    font-size: 0.72rem;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 0.72rem !important;
+    line-height: 1.2 !important;
+    margin: 0.15rem 0 0 0 !important;
+    color: var(--color-muted) !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .youtube-result__actions {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.12rem !important;
+  }
+
+  .youtube-result__actions .track-actions--row {
+    gap: 0.12rem !important;
+  }
+
+  .youtube-result__actions .track-action-btn {
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    flex-shrink: 0 !important;
+    padding: 0 !important;
+  }
+
+  .youtube-result__actions .track-action-btn svg {
+    width: 13px !important;
+    height: 13px !important;
   }
 
   /* Playlists Page */
@@ -1264,9 +1352,14 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .track-card__details h3 {
     font-size: 0.82rem;
     max-width: 100%;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.25;
   }
 
   .track-card__details p {
@@ -1275,6 +1368,22 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .track-card__actions .track-actions--row {
+    gap: 0.12rem;
+  }
+
+  .track-card__actions .track-action-btn {
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    padding: 0;
+  }
+
+  .track-card__actions .track-action-btn svg {
+    width: 13px;
+    height: 13px;
   }
 
   /* User Menu */
@@ -1864,4 +1973,29 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   display: flex;
   align-items: center;
 }
+
+/* ── Mobile plain background ──────────────────────────────────────────────── */
+.mobile-plain-bg {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  pointer-events: none;
+  background-color: #0a0b10;
+}
+
+@media (min-width: 769px) {
+  .mobile-plain-bg {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .aero-shards-bg-wrapper,
+  .ballpit-background {
+    display: none !important;
+  }
+}
+
 
