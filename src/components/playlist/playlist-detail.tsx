@@ -154,6 +154,17 @@ export function PlaylistDetail({ playlist: initial, isOwner }: PlaylistDetailPro
                       <p>{track.artist}</p>
                     </div>
                     <div className="track-card__actions" onClick={(e) => e.stopPropagation()}>
+                      {isOwner && (
+                        <button
+                          type="button"
+                          className="track-card__remove-btn"
+                          onClick={() => void handleRemoveTrack(track.id)}
+                          aria-label={`Remove ${track.title} from playlist`}
+                          title="Remove from playlist"
+                        >
+                          ✕
+                        </button>
+                      )}
                       <TrackActions track={track} size="small" variant="row" />
                       <span className="track-card__duration">{formatDuration(track.duration)}</span>
                     </div>
