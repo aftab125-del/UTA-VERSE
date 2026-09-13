@@ -306,12 +306,12 @@ export function TrackActions({
 
 // ── Playlist Picker Modal ───────────────────────────────────────────────────
 
-interface PlaylistPickerModalProps {
+export interface PlaylistPickerModalProps {
   track: Track;
   onClose: () => void;
 }
 
-function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps) {
+export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps) {
   const { user } = useUser();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
