@@ -14,6 +14,7 @@ export interface TrackActionsProps {
   size?: "small" | "normal";
   className?: string;
   onRemoveFromQueue?: () => void;
+  onRemoveFromPlaylist?: () => void;
 }
 
 export function TrackActions({
@@ -22,6 +23,7 @@ export function TrackActions({
   size = "small",
   className = "",
   onRemoveFromQueue,
+  onRemoveFromPlaylist,
 }: TrackActionsProps) {
   const { user } = useUser();
   const isLiked = useLikesStore((s) => s.isLiked(track.id));
@@ -200,6 +202,21 @@ export function TrackActions({
               >
                 <QueueIcon />
                 <span>Add to Queue</span>
+              </button>
+            )}
+
+            {onRemoveFromPlaylist && (
+              <button
+                type="button"
+                className="track-actions__menu-item track-actions__menu-item--danger"
+                role="menuitem"
+                onClick={() => {
+                  setDropdownOpen(false);
+                  onRemoveFromPlaylist();
+                }}
+              >
+                <TrashIcon />
+                <span>Remove from Playlist</span>
               </button>
             )}
           </div>
