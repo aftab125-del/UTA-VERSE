@@ -9,11 +9,22 @@ import {
   type LyricsData,
   type SyncedLine,
 } from "@/lib/music/lyrics";
-import { extractThemePalette, type ThemePalette } from "@/lib/utils/color-extractor";
+import { extractThemePalette, DEFAULT_PALETTE, type ThemePalette } from "@/lib/utils/color-extractor";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
 import { useUser } from "@/hooks/use-user";
 import { useLikesStore } from "@/stores/likes-store";
 import { showToast } from "@/stores/toast-store";
+
+interface BackgroundLayer {
+  desktopBg: string;
+  mobileBg: string;
+  artworkUrl: string | null;
+}
+
+interface BackgroundTransitionState {
+  activeIndex: 0 | 1;
+  layers: [BackgroundLayer, BackgroundLayer];
+}
 
 export function FullScreenPlayer() {
   const { user } = useUser();
@@ -41,6 +52,21 @@ export function FullScreenPlayer() {
   const initLikes = useLikesStore((s) => s.init);
 
   const [palette, setPalette] = useState<ThemePalette | null>(null);
+  const [bgState, setBgState] = useState<BackgroundTransitionState>(() => ({
+    activeIndex: 0,
+    layers: [
+      {
+        desktopBg: DEFAULT_PALETTE.backgroundGradient,
+        mobileBg: DEFAULT_PALETTE.mobileBackgroundGradient,
+        artworkUrl: currentTrack?.artwork ?? null,
+      },
+      {
+        desktopBg: DEFAULT_PALETTE.backgroundGradient,
+        mobileBg: DEFAULT_PALETTE.mobileBackgroundGradient,
+        artworkUrl: currentTrack?.artwork ?? null,
+      },
+    ],
+  }));
   const [lyricsData, setLyricsData] = useState<LyricsData | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState<string | null>(null);
@@ -111,30 +137,74 @@ export function FullScreenPlayer() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded, setIsExpanded]);
 
-  // Close more menu on click outside
+  // Close more menu on click/tap outside or when collapsed
   useEffect(() => {
     if (!moreMenuOpen) return;
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
       if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
         setMoreMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, [moreMenuOpen]);
 
-  // Extract dynamic theme palette when track changes
+  // Extract dynamic theme palette and cross-fade background when track changes
   useEffect(() => {
     let isCancelled = false;
     if (!currentTrack?.artwork) {
       Promise.resolve().then(() => {
-        if (!isCancelled) setPalette(null);
+        if (isCancelled) return;
+        setPalette(null);
+        setBgState((prev) => {
+          const currentActive = prev.layers[prev.activeIndex];
+          if (
+            currentActive.desktopBg === DEFAULT_PALETTE.backgroundGradient &&
+            currentActive.mobileBg === DEFAULT_PALETTE.mobileBackgroundGradient &&
+            currentActive.artworkUrl === null
+          ) {
+            return prev;
+          }
+          const nextIndex: 0 | 1 = prev.activeIndex === 0 ? 1 : 0;
+          const nextLayers: [BackgroundLayer, BackgroundLayer] = [prev.layers[0], prev.layers[1]];
+          nextLayers[nextIndex] = {
+            desktopBg: DEFAULT_PALETTE.backgroundGradient,
+            mobileBg: DEFAULT_PALETTE.mobileBackgroundGradient,
+            artworkUrl: null,
+          };
+          return { activeIndex: nextIndex, layers: nextLayers };
+        });
       });
       return;
     }
+
     void extractThemePalette(currentTrack.artwork).then((extracted) => {
-      if (!isCancelled) setPalette(extracted);
+      if (isCancelled) return;
+      setPalette(extracted);
+      setBgState((prev) => {
+        const currentActive = prev.layers[prev.activeIndex];
+        if (
+          currentActive.desktopBg === extracted.backgroundGradient &&
+          currentActive.mobileBg === extracted.mobileBackgroundGradient &&
+          currentActive.artworkUrl === currentTrack.artwork
+        ) {
+          return prev;
+        }
+        const nextIndex: 0 | 1 = prev.activeIndex === 0 ? 1 : 0;
+        const nextLayers: [BackgroundLayer, BackgroundLayer] = [prev.layers[0], prev.layers[1]];
+        nextLayers[nextIndex] = {
+          desktopBg: extracted.backgroundGradient,
+          mobileBg: extracted.mobileBackgroundGradient,
+          artworkUrl: currentTrack.artwork ?? null,
+        };
+        return { activeIndex: nextIndex, layers: nextLayers };
+      });
     });
+
     return () => {
       isCancelled = true;
     };
@@ -287,25 +357,33 @@ export function FullScreenPlayer() {
           "linear-gradient(180deg, #221a36 0%, #141022 42%, #0a0812 100%)",
       } as React.CSSProperties}
     >
-      {/* 1. Blurred Artwork Ambient Canvas (matches Spotify / Apple Music) */}
-      {currentTrack.artwork && (
-        <div
-          className="fullscreen-player__bg-art"
-          style={{ backgroundImage: `url(${currentTrack.artwork})` }}
-          aria-hidden="true"
-        />
-      )}
+      {/* Double-buffered ambient background with smooth cross-fading */}
+      <div className="fullscreen-player__bg-container" aria-hidden="true">
+        {bgState.layers.map((layer, index) => {
+          const isActive = index === bgState.activeIndex;
+          return (
+            <div
+              key={index}
+              className={`fullscreen-player__bg-layer${isActive ? " fullscreen-player__bg-layer--active" : ""}`}
+              style={{
+                "--layer-desktop-bg": layer.desktopBg,
+                "--layer-mobile-bg": layer.mobileBg,
+              } as React.CSSProperties}
+            >
+              {layer.artworkUrl && (
+                <div
+                  className="fullscreen-player__bg-art"
+                  style={{ backgroundImage: `url(${layer.artworkUrl})` }}
+                />
+              )}
+              <div className="fullscreen-player__bg-gradient" />
+            </div>
+          );
+        })}
+      </div>
 
-      {/* 2. Solid Opaque Gradient Overlay (Completely hides underlying page) */}
-      <div
-        className="fullscreen-player__bg-overlay"
-        style={{
-          background:
-            palette?.backgroundGradient ??
-            "radial-gradient(ellipse 90% 60% at 50% -10%, rgba(139, 92, 246, 0.45) 0%, #06070a 90%), #06070a",
-        }}
-        aria-hidden="true"
-      />
+      {/* Dark contrast veil guaranteeing crisp text & lyrics contrast */}
+      <div className="fullscreen-player__contrast-veil" aria-hidden="true" />
 
       {/* ─── DESKTOP VIEW (>= 769px: Split 2-Column) ────────────────────── */}
       <div className="fullscreen-player__desktop-view">

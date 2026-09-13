@@ -23,6 +23,7 @@ export function PlaylistDetail({ playlist: initial, isOwner }: PlaylistDetailPro
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   const setTrack = usePlayerStore((s) => s.setTrack);
+  const shufflePlayStore = usePlayerStore((s) => s.shufflePlay);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
@@ -37,8 +38,7 @@ export function PlaylistDetail({ playlist: initial, isOwner }: PlaylistDetailPro
 
   function shufflePlay() {
     if (playlist.tracks.length === 0) return;
-    const shuffled = [...playlist.tracks].sort(() => Math.random() - 0.5);
-    void setTrack(shuffled[0], shuffled);
+    void shufflePlayStore(playlist.tracks);
   }
 
   async function handleRemoveTrack(trackId: string) {
@@ -154,18 +154,12 @@ export function PlaylistDetail({ playlist: initial, isOwner }: PlaylistDetailPro
                       <p>{track.artist}</p>
                     </div>
                     <div className="track-card__actions" onClick={(e) => e.stopPropagation()}>
-                      {isOwner && (
-                        <button
-                          type="button"
-                          className="track-card__remove-btn"
-                          onClick={() => void handleRemoveTrack(track.id)}
-                          aria-label={`Remove ${track.title} from playlist`}
-                          title="Remove from playlist"
-                        >
-                          ✕
-                        </button>
-                      )}
-                      <TrackActions track={track} size="small" variant="row" />
+                      <TrackActions
+                        track={track}
+                        size="small"
+                        variant="dropdown"
+                        onRemoveFromPlaylist={isOwner ? () => void handleRemoveTrack(track.id) : undefined}
+                      />
                       <span className="track-card__duration">{formatDuration(track.duration)}</span>
                     </div>
                   </div>

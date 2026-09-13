@@ -14,6 +14,7 @@ const STORAGE_KEY = "uta-verse-player";
 interface PersistedPlayerState {
   queue: Track[];
   queueIndex: number;
+  preShuffleQueue?: Track[] | null;
   volume: number;
   isMuted: boolean;
   repeatMode: RepeatMode;
@@ -27,6 +28,7 @@ function loadPersistedState(): Partial<PersistedPlayerState> {
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Partial<PersistedPlayerState>;
     if (!Array.isArray(parsed.queue)) parsed.queue = [];
+    if (!Array.isArray(parsed.preShuffleQueue)) parsed.preShuffleQueue = null;
     if (typeof parsed.volume !== "number") parsed.volume = 0.8;
     if (typeof parsed.isMuted !== "boolean") parsed.isMuted = false;
     if (!["off", "all", "one"].includes(parsed.repeatMode as string)) parsed.repeatMode = "off";
@@ -43,6 +45,7 @@ function savePersistedState(state: PersistedPlayerState) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       queue: state.queue,
       queueIndex: state.queueIndex,
+      preShuffleQueue: state.preShuffleQueue ?? null,
       volume: state.volume,
       isMuted: state.isMuted,
       repeatMode: state.repeatMode,
@@ -56,11 +59,23 @@ function savePersistedState(state: PersistedPlayerState) {
 // ── Shuffle utility ───────────────────────────────────────────────────────────
 
 function fisherYatesShuffle(arr: Track[]): Track[] {
+  if (arr.length <= 1) return [...arr];
   const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
+  let attempts = 0;
+  // Fisher-Yates with derangement retry so small/medium arrays don't accidentally match original order
+  do {
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const temp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = temp;
+    }
+    attempts++;
+  } while (
+    attempts < 5 &&
+    arr.length > 2 &&
+    copy.every((item, idx) => item.id === arr[idx]?.id)
+  );
   return copy;
 }
 
@@ -85,6 +100,7 @@ type PlayerState = {
   isExpanded: boolean;
   error: string | null;
   setTrack: (track: Track, queue?: Track[]) => Promise<void>;
+  shufflePlay: (tracks: Track[], startIndex?: number) => Promise<void>;
   togglePlayPause: () => Promise<void>;
   pause: () => void;
   seek: (position: number) => void;
@@ -191,6 +207,7 @@ function persist(get: () => PlayerState) {
   savePersistedState({
     queue: s.queue,
     queueIndex: s.queueIndex,
+    preShuffleQueue: s.preShuffleQueue,
     volume: s.volume,
     isMuted: s.isMuted,
     repeatMode: s.repeatMode,
@@ -204,7 +221,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: null,
   queue: persisted.queue ?? [],
   queueIndex: persisted.queueIndex ?? -1,
-  preShuffleQueue: null,
+  preShuffleQueue: persisted.preShuffleQueue ?? null,
   isPlaying: false,
   isLoading: false,
   isResolving: false,
@@ -239,9 +256,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     const requestId = ++playbackRequestId;
-    const queueIndex = Math.max(0, queue.findIndex((item) => item.id === track.id));
+    const isSameQueue = queue === get().queue;
+    let effectiveQueue = queue;
+    let queueIndex = Math.max(0, queue.findIndex((item) => item.id === track.id));
+    let preShuffleQueue = isSameQueue ? get().preShuffleQueue : null;
+
+    if (!isSameQueue && get().isShuffled && queue.length > 1) {
+      preShuffleQueue = queue;
+      const others = queue.filter((t) => t.id !== track.id);
+      effectiveQueue = [track, ...fisherYatesShuffle(others)];
+      queueIndex = 0;
+    }
+
     audioEngine?.clear();
-    set({ currentTrack: track, queue, queueIndex, preShuffleQueue: null, position: 0, duration: track.duration, buffered: 0, isPlaying: false, isLoading: true, isResolving: !track.audioUrl, error: null });
+    set({
+      currentTrack: track,
+      queue: effectiveQueue,
+      queueIndex,
+      preShuffleQueue,
+      position: 0,
+      duration: track.duration,
+      buffered: 0,
+      isPlaying: false,
+      isLoading: true,
+      isResolving: !track.audioUrl,
+      error: null,
+    });
     persist(get);
 
     // Update Media Session metadata for system-level display.
@@ -341,15 +381,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setShuffled: (isShuffled) => {
     const { queue, queueIndex, currentTrack, preShuffleQueue } = get();
     if (isShuffled) {
-      // Shuffle the remaining tracks (everything after current), then prepend current.
-      const current = currentTrack ? [currentTrack] : [];
-      const before = queue.slice(0, queueIndex);
-      const after = queue.slice(queueIndex + 1);
-      const shuffled = fisherYatesShuffle([...before, ...after]);
-      const newQueue = [...current, ...shuffled];
+      // Base queue to shuffle: preserve original preShuffleQueue if already set, otherwise current queue
+      const baseQueue = preShuffleQueue && preShuffleQueue.length > 0 ? preShuffleQueue : queue;
+      if (baseQueue.length <= 1) {
+        set({ isShuffled: true, preShuffleQueue: baseQueue });
+        persist(get);
+        return;
+      }
+
+      const current = currentTrack ?? baseQueue[queueIndex] ?? baseQueue[0];
+      const others = baseQueue.filter((t) => t.id !== current.id);
+      
+      let shuffledOthers = fisherYatesShuffle(others);
+
+      // If user toggles shuffle or re-shuffles, ensure new upcoming order is genuinely different from current upcoming order
+      const currentUpcoming = queue.slice(queueIndex + 1);
+      if (others.length > 2 && currentUpcoming.length > 1) {
+        let retries = 0;
+        while (
+          retries < 5 &&
+          shuffledOthers.every((item, idx) => item.id === currentUpcoming[idx]?.id)
+        ) {
+          shuffledOthers = fisherYatesShuffle(others);
+          retries++;
+        }
+      }
+
+      const newQueue = [current, ...shuffledOthers];
       set({
         isShuffled: true,
-        preShuffleQueue: queue,
+        preShuffleQueue: baseQueue,
         queue: newQueue,
         queueIndex: 0,
       });
@@ -365,6 +426,85 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
     }
     persist(get);
+  },
+
+  shufflePlay: async (tracks: Track[], startIndex?: number) => {
+    if (!tracks || tracks.length === 0) return;
+    const startIdx = typeof startIndex === "number" && startIndex >= 0 && startIndex < tracks.length
+      ? startIndex
+      : Math.floor(Math.random() * tracks.length);
+    const startTrack = tracks[startIdx];
+    const others = tracks.filter((_, idx) => idx !== startIdx);
+    const shuffledOthers = fisherYatesShuffle(others);
+    const newQueue = [startTrack, ...shuffledOthers];
+
+    const requestId = ++playbackRequestId;
+    audioEngine?.clear();
+    set({
+      currentTrack: startTrack,
+      queue: newQueue,
+      queueIndex: 0,
+      preShuffleQueue: tracks,
+      isShuffled: true,
+      position: 0,
+      duration: startTrack.duration,
+      buffered: 0,
+      isPlaying: false,
+      isLoading: true,
+      isResolving: !startTrack.audioUrl,
+      error: null,
+    });
+    persist(get);
+
+    setMediaSessionMetadata(startTrack);
+    setMediaSessionPlaybackState("paused");
+
+    try {
+      const sourceUrl = startTrack.audioUrl ?? await resolveTrackSource(startTrack);
+      if (!isCurrentRequest(requestId, startTrack, get)) return;
+
+      const engine = getAudioEngine();
+      engine.load(sourceUrl, {
+        onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
+        onReady: (duration) => set({ duration, isLoading: false, isResolving: false }),
+        onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
+        onPlaying: () => {
+          set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
+          setMediaSessionPlaybackState("playing");
+          void recordHistory(startTrack.id, {
+            title: startTrack.title,
+            artist: startTrack.artist,
+            artwork: startTrack.artwork,
+            duration: startTrack.duration,
+          });
+        },
+        onPaused: () => {
+          set({ isPlaying: false });
+          setMediaSessionPlaybackState("paused");
+        },
+        onEnded: () => {
+          const { repeatMode } = get();
+          if (repeatMode === "one") {
+            const engine = getAudioEngine();
+            engine.seek(0);
+            void engine.play();
+          } else {
+            get().next();
+          }
+        },
+        onError: (err) => {
+          console.error("[PlayerStore] Audio playback failed:", err);
+          set({ error: "Failed to play audio source", isPlaying: false, isLoading: false, isResolving: false });
+          setMediaSessionPlaybackState("none");
+        },
+      });
+      await engine.play();
+    } catch (err) {
+      if (!isCurrentRequest(requestId, startTrack, get)) return;
+      console.error("[PlayerStore] Failed to resolve or play track:", err);
+      set({ error: "Could not resolve audio for this track", isPlaying: false, isLoading: false, isResolving: false });
+      setMediaSessionPlaybackState("none");
+    }
   },
 
   // ── Queue management ──────────────────────────────────────────────────────
