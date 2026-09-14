@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useUser } from "@/hooks/use-user";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLikesStore } from "@/stores/likes-store";
@@ -374,7 +375,25 @@ export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps
     }
   };
 
-  return (
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="modal-overlay"
       role="dialog"
@@ -439,7 +458,8 @@ export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

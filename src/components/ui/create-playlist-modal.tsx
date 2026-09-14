@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useUser } from "@/hooks/use-user";
 
@@ -21,7 +22,16 @@ export function CreatePlaylistModal({ open, onClose, onCreated, initialName, pla
   const [error, setError] = useState<string | null>(null);
   const supabase = createSupabaseBrowserClient();
 
-  if (!open) return null;
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +63,7 @@ export function CreatePlaylistModal({ open, onClose, onCreated, initialName, pla
     }
   }
 
-  return (
+  return createPortal(
     <div className="modal-overlay" role="dialog" aria-label={playlistId ? "Edit playlist" : "Create playlist"} onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__header">
@@ -87,6 +97,7 @@ export function CreatePlaylistModal({ open, onClose, onCreated, initialName, pla
           </button>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

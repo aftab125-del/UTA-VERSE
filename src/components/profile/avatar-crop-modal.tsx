@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Cropper from "react-easy-crop";
 import type { Point, Area } from "react-easy-crop";
 import { getCroppedImg } from "@/lib/utils/crop-image";
@@ -41,9 +42,18 @@ export function AvatarCropModal({
     }
   };
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
-  return (
+  if (!isOpen || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="crop-modal-overlay"
       role="dialog"
@@ -125,6 +135,7 @@ export function AvatarCropModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
