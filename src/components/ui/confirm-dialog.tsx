@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
@@ -11,9 +14,18 @@ interface ConfirmDialogProps {
 }
 
 export function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", onConfirm, onCancel, danger }: ConfirmDialogProps) {
-  if (!open) return null;
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onCancel]);
 
-  return (
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="modal-overlay" role="alertdialog" aria-label={title} onClick={onCancel}>
       <div className="modal-card modal-card--compact" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__header">
@@ -27,6 +39,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel = "Confirm", 
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
