@@ -233,7 +233,7 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
     subtitle: result.isSynced ? `${result.channelTitle} • ♪ Synced` : result.channelTitle,
     borderColor: VIOLET_THEMES[idx % VIOLET_THEMES.length].borderColor,
     gradient: VIOLET_THEMES[idx % VIOLET_THEMES.length].gradient,
-    onClick: () => void setTrack(toTrack(result)),
+    onClick: () => void setTrack(toTrack(result), results.map(toTrack)),
   }));
 
   return (
@@ -294,7 +294,7 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
                   key={result.videoId}
                   result={result}
                   track={track}
-                  onPlay={() => void setTrack(track)}
+                  onPlay={() => void setTrack(track, results.map(toTrack))}
                 />
               );
             })}
