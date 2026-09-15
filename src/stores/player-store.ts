@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { AudioEngine } from "@/lib/audio/audio-engine";
-import { setMediaSessionMetadata, setMediaSessionActionHandlers, setMediaSessionPlaybackState } from "@/lib/audio/media-session";
+import {
+  setMediaSessionMetadata,
+  setMediaSessionActionHandlers,
+  setMediaSessionPlaybackState,
+  updateMediaSessionPositionState,
+} from "@/lib/audio/media-session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { recordListeningHistory } from "@/lib/music/library";
 import type { Track } from "@/types/music";
@@ -101,6 +106,7 @@ type PlayerState = {
   error: string | null;
   setTrack: (track: Track, queue?: Track[]) => Promise<void>;
   shufflePlay: (tracks: Track[], startIndex?: number) => Promise<void>;
+  play: () => Promise<void>;
   togglePlayPause: () => Promise<void>;
   pause: () => void;
   seek: (position: number) => void;
@@ -183,6 +189,13 @@ async function resolveTrackSource(track: Track): Promise<string> {
   throw new Error("Playback resolution timed out after 90 seconds.");
 }
 
+function prefetchNextTrackSource(nextTrack?: Track | null) {
+  if (!nextTrack || nextTrack.audioUrl || resolvedSourceCache.has(nextTrack.id)) return;
+  void resolveTrackSource(nextTrack).catch((err) => {
+    console.debug("[PlayerStore] Background pre-resolve of next track skipped/failed", err);
+  });
+}
+
 function isCurrentRequest(requestId: number, track: Track, get: () => PlayerState) {
   return requestId === playbackRequestId && get().currentTrack?.id === track.id;
 }
@@ -235,7 +248,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isExpanded: false,
   error: null,
 
-  setTrack: async (track, queue = [track]) => {
+  setTrack: async (track, newQueue) => {
+    const currentQueue = get().queue;
+    const queue = newQueue ?? (currentQueue.some((item) => item.id === track.id) ? currentQueue : [track]);
     if (get().currentTrack?.id === track.id && audioEngine?.hasLoadedSource()) {
       if (queue !== get().queue) {
         const queueIndex = Math.max(0, queue.findIndex((item) => item.id === track.id));
@@ -268,7 +283,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       queueIndex = 0;
     }
 
-    audioEngine?.clear();
+    // Pause current audio without wiping the source or dropping OS media focus
+    audioEngine?.pause();
     set({
       currentTrack: track,
       queue: effectiveQueue,
@@ -279,14 +295,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       buffered: 0,
       isPlaying: false,
       isLoading: true,
-      isResolving: !track.audioUrl,
+      isResolving: !track.audioUrl && !resolvedSourceCache.has(track.id),
       error: null,
     });
     persist(get);
 
-    // Update Media Session metadata for system-level display.
+    // Update Media Session metadata & position for system notification bar
     setMediaSessionMetadata(track);
     setMediaSessionPlaybackState("paused");
+    updateMediaSessionPositionState({ duration: track.duration, position: 0 });
 
     try {
       const sourceUrl = track.audioUrl ?? await resolveTrackSource(track);
@@ -295,17 +312,37 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const engine = getAudioEngine();
       engine.load(sourceUrl, {
         onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
-        onReady: (duration) => set({ duration, isLoading: false, isResolving: false }),
-        onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
-        onPlaying: () => { set({ isPlaying: true, isLoading: false, isResolving: false, error: null }); setMediaSessionPlaybackState("playing"); void recordHistory(track.id, { title: track.title, artist: track.artist, artwork: track.artwork, duration: track.duration }); },
+        onReady: (duration) => {
+          set({ duration, isLoading: false, isResolving: false });
+          updateMediaSessionPositionState({ duration, position: 0 });
+        },
+        onProgress: (position, duration, buffered) => {
+          set({ position, duration, buffered });
+          // Pre-resolve next track when reaching 70% of current track
+          if (duration > 0 && position / duration > 0.7) {
+            const { queue: q, queueIndex: qIdx } = get();
+            if (q.length > 0 && qIdx + 1 < q.length) {
+              prefetchNextTrackSource(q[qIdx + 1]);
+            }
+          }
+        },
+        onPlaying: () => {
+          set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
+          setMediaSessionPlaybackState("playing");
+          void recordHistory(track.id, { title: track.title, artist: track.artist, artwork: track.artwork, duration: track.duration });
+          // Pre-resolve next track as soon as current track starts playing
+          const { queue: q, queueIndex: qIdx } = get();
+          if (q.length > 0 && qIdx + 1 < q.length) {
+            prefetchNextTrackSource(q[qIdx + 1]);
+          }
+        },
         onPaused: () => { set({ isPlaying: false }); setMediaSessionPlaybackState("paused"); },
         onEnded: () => {
           const { repeatMode } = get();
           if (repeatMode === "one") {
-            // Replay the current track from the beginning.
-            const engine = getAudioEngine();
-            engine.seek(0);
-            void engine.play();
+            const eng = getAudioEngine();
+            eng.seek(0);
+            void eng.play();
           } else {
             get().next();
           }
@@ -324,13 +361,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  togglePlayPause: async () => {
+  play: async () => {
     const track = get().currentTrack;
     if (!track || get().isResolving || get().isLoading) return;
-    if (get().isPlaying) {
-      audioEngine?.pause();
-      return;
-    }
+    if (get().isPlaying) return;
     if (audioEngine?.hasLoadedSource()) {
       try {
         await audioEngine.play();
@@ -342,12 +376,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     await get().setTrack(track, get().queue.length ? get().queue : [track]);
   },
 
+  togglePlayPause: async () => {
+    if (get().isPlaying) {
+      get().pause();
+    } else {
+      await get().play();
+    }
+  },
+
   pause: () => { if (!get().isResolving) audioEngine?.pause(); },
   seek: (position) => {
     if (!get().isResolving && !get().isLoading && get().duration > 0) {
       const targetPos = Math.max(0, Math.min(get().duration, position));
       set({ position: targetPos });
       audioEngine?.seek(targetPos);
+      updateMediaSessionPositionState({ duration: get().duration, position: targetPos });
     }
   },
   setVolume: (volume) => {
@@ -372,8 +415,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   previous: () => {
-    const { queue, queueIndex } = get();
-    if (queue.length && queueIndex > 0) void get().setTrack(queue[queueIndex - 1], queue);
+    const { queue, queueIndex, position } = get();
+    if (position > 3) {
+      get().seek(0);
+      return;
+    }
+    if (queue.length && queueIndex > 0) {
+      void get().setTrack(queue[queueIndex - 1], queue);
+    } else {
+      get().seek(0);
+    }
   },
 
   setRepeatMode: (repeatMode) => { set({ repeatMode }); persist(get); },
@@ -439,7 +490,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const newQueue = [startTrack, ...shuffledOthers];
 
     const requestId = ++playbackRequestId;
-    audioEngine?.clear();
+    audioEngine?.pause();
     set({
       currentTrack: startTrack,
       queue: newQueue,
@@ -451,13 +502,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       buffered: 0,
       isPlaying: false,
       isLoading: true,
-      isResolving: !startTrack.audioUrl,
+      isResolving: !startTrack.audioUrl && !resolvedSourceCache.has(startTrack.id),
       error: null,
     });
     persist(get);
 
     setMediaSessionMetadata(startTrack);
     setMediaSessionPlaybackState("paused");
+    updateMediaSessionPositionState({ duration: startTrack.duration, position: 0 });
 
     try {
       const sourceUrl = startTrack.audioUrl ?? await resolveTrackSource(startTrack);
@@ -466,8 +518,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const engine = getAudioEngine();
       engine.load(sourceUrl, {
         onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
-        onReady: (duration) => set({ duration, isLoading: false, isResolving: false }),
-        onProgress: (position, duration, buffered) => set({ position, duration, buffered }),
+        onReady: (duration) => {
+          set({ duration, isLoading: false, isResolving: false });
+          updateMediaSessionPositionState({ duration, position: 0 });
+        },
+        onProgress: (position, duration, buffered) => {
+          set({ position, duration, buffered });
+          if (duration > 0 && position / duration > 0.7) {
+            const { queue: q, queueIndex: qIdx } = get();
+            if (q.length > 0 && qIdx + 1 < q.length) {
+              prefetchNextTrackSource(q[qIdx + 1]);
+            }
+          }
+        },
         onPlaying: () => {
           set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
           setMediaSessionPlaybackState("playing");
@@ -477,6 +540,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             artwork: startTrack.artwork,
             duration: startTrack.duration,
           });
+          const { queue: q, queueIndex: qIdx } = get();
+          if (q.length > 0 && qIdx + 1 < q.length) {
+            prefetchNextTrackSource(q[qIdx + 1]);
+          }
         },
         onPaused: () => {
           set({ isPlaying: false });
@@ -609,15 +676,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 // so they always reflect the latest state.
 if (typeof window !== "undefined") {
   setMediaSessionActionHandlers({
-    play: () => { void usePlayerStore.getState().togglePlayPause(); },
+    play: () => { void usePlayerStore.getState().play(); },
     pause: () => { usePlayerStore.getState().pause(); },
-    seekBackward: () => {
+    stop: () => { usePlayerStore.getState().pause(); },
+    seekBackward: (details) => {
       const { position, seek } = usePlayerStore.getState();
-      seek(Math.max(0, position - 10));
+      const offset = details?.seekOffset ?? 10;
+      seek(Math.max(0, position - offset));
     },
-    seekForward: () => {
+    seekForward: (details) => {
       const { position, duration, seek } = usePlayerStore.getState();
-      seek(Math.min(duration, position + 10));
+      const offset = details?.seekOffset ?? 10;
+      seek(Math.min(duration, position + offset));
+    },
+    seekTo: (details) => {
+      if (typeof details?.seekTime === "number" && !isNaN(details.seekTime)) {
+        usePlayerStore.getState().seek(details.seekTime);
+      }
     },
     previousTrack: () => { usePlayerStore.getState().previous(); },
     nextTrack: () => { usePlayerStore.getState().next(); },

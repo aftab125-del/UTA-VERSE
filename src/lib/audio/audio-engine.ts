@@ -18,7 +18,7 @@ export class AudioEngine {
   constructor() {
     if (typeof window === "undefined") throw new Error("AudioEngine requires a browser");
     this.element = new Audio();
-    this.element.preload = "metadata";
+    this.element.preload = "auto";
   }
 
   load(source: string, callbacks: AudioEngineCallbacks = {}) {
