@@ -21,24 +21,56 @@ export class AudioEngine {
     this.element.preload = "auto";
   }
 
+  private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private clearWatchdog() {
+    if (this.watchdogTimer) {
+      clearTimeout(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+  }
+
   load(source: string, callbacks: AudioEngineCallbacks = {}) {
     if (!source) throw new Error("An audio source is required.");
     this.cleanupListeners?.();
-    this.element.pause();
+    this.clearWatchdog();
+
+    // Reassigning src transitions the media pipeline without breaking the audio session
     this.element.src = source;
     this.element.load();
     this.hasSource = true;
     this.currentCallbacks = callbacks;
     callbacks.onLoading?.();
 
+    // 12-second watchdog for stalled network or frozen background loading states
+    this.watchdogTimer = setTimeout(() => {
+      if (this.hasSource && this.element.readyState < 2) {
+        console.warn("[AudioEngine] Playback stalled or failed to load source within 12s", {
+          src: this.element.src,
+          readyState: this.element.readyState,
+          networkState: this.element.networkState,
+        });
+        this.clearWatchdog();
+        callbacks.onError?.("The audio playback stalled and could not load.");
+      }
+    }, 12_000);
+
     const onLoadedMetadata = () => callbacks.onReady?.(this.element.duration || 0);
+    const onCanPlay = () => this.clearWatchdog();
     const onTimeUpdate = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
     const onProgress = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
     const onSeeked = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
-    const onPlaying = () => callbacks.onPlaying?.();
+    const onPlaying = () => {
+      this.clearWatchdog();
+      callbacks.onPlaying?.();
+    };
     const onPause = () => callbacks.onPaused?.();
-    const onEnded = () => callbacks.onEnded?.();
+    const onEnded = () => {
+      this.clearWatchdog();
+      callbacks.onEnded?.();
+    };
     const onError = () => {
+      this.clearWatchdog();
       console.error("[AudioEngine] Audio element failed to load the source", {
         code: this.element.error?.code ?? null,
         networkState: this.element.networkState,
@@ -48,6 +80,7 @@ export class AudioEngine {
     };
 
     this.element.addEventListener("loadedmetadata", onLoadedMetadata);
+    this.element.addEventListener("canplay", onCanPlay);
     this.element.addEventListener("timeupdate", onTimeUpdate);
     this.element.addEventListener("progress", onProgress);
     this.element.addEventListener("seeked", onSeeked);
@@ -57,7 +90,9 @@ export class AudioEngine {
     this.element.addEventListener("error", onError);
 
     this.cleanupListeners = () => {
+      this.clearWatchdog();
       this.element.removeEventListener("loadedmetadata", onLoadedMetadata);
+      this.element.removeEventListener("canplay", onCanPlay);
       this.element.removeEventListener("timeupdate", onTimeUpdate);
       this.element.removeEventListener("progress", onProgress);
       this.element.removeEventListener("seeked", onSeeked);
@@ -106,6 +141,7 @@ export class AudioEngine {
   clear() {
     this.cleanupListeners?.();
     this.cleanupListeners = null;
+    this.clearWatchdog();
     this.currentCallbacks = null;
     this.element.pause();
     this.element.removeAttribute("src");
