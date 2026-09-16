@@ -30,3 +30,40 @@ export function decodeHtmlEntities(text: string | null | undefined): string {
       }
     });
 }
+
+/**
+ * Cleans track titles by decoding HTML entities, stripping redundant artist prefixes,
+ * and removing stray enclosing quotes.
+ */
+export function cleanTrackTitle(title: string | null | undefined, artist?: string | null): string {
+  if (!title) return "Unknown Track";
+  let decoded = decodeHtmlEntities(title).trim();
+
+  if (artist) {
+    const decodedArtist = decodeHtmlEntities(artist).trim();
+    if (decodedArtist) {
+      // Remove leading "Artist - " or "Artist: " or "Artist | "
+      const escapedArtist = decodedArtist.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const prefixRegex = new RegExp(`^${escapedArtist}\\s*[-–—:|•]+\\s*`, "i");
+      decoded = decoded.replace(prefixRegex, "").trim();
+
+      // Handle cases like: Dominic Fike "Babydoll"
+      const quotePrefixRegex = new RegExp(`^${escapedArtist}\\s+["'](.+)["']$`, "i");
+      const quoteMatch = decoded.match(quotePrefixRegex);
+      if (quoteMatch && quoteMatch[1]) {
+        decoded = quoteMatch[1].trim();
+      }
+    }
+  }
+
+  // Strip enclosing quotes: "Babydoll" -> Babydoll
+  if (
+    (decoded.startsWith('"') && decoded.endsWith('"')) ||
+    (decoded.startsWith("'") && decoded.endsWith("'")) ||
+    (decoded.startsWith("“") && decoded.endsWith("”"))
+  ) {
+    decoded = decoded.slice(1, -1).trim();
+  }
+
+  return decoded || decodeHtmlEntities(title).trim() || "Unknown Track";
+}

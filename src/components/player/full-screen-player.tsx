@@ -10,6 +10,7 @@ import {
   type SyncedLine,
 } from "@/lib/music/lyrics";
 import { extractThemePalette, DEFAULT_PALETTE, type ThemePalette } from "@/lib/utils/color-extractor";
+import { cleanTrackTitle, decodeHtmlEntities } from "@/lib/utils/html";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton, PlaylistPickerModal } from "@/components/ui/track-actions";
 import { type Track } from "@/types/music";
 import { useUser } from "@/hooks/use-user";
@@ -343,10 +344,10 @@ export function FullScreenPlayer() {
       ? "Finding the right words…"
       : canSync && activeIndex >= 0 && lyricsData?.syncedLyrics?.[activeIndex]?.text
       ? lyricsData.syncedLyrics[activeIndex].text
+      : hasSyncedLyrics && canSync
+      ? "Verses incoming"
       : hasSyncedLyrics || hasPlainLyrics
-      ? canSync
-        ? "Lyrics available (tap to view)"
-        : "Lyrics available (scrollable)"
+      ? "Lyrics available (tap to view)"
       : "No lyrics available";
 
   return (
@@ -643,20 +644,19 @@ export function FullScreenPlayer() {
         {/* PHASE 1: NOW PLAYING / TRACK PHASE (matches media_1789028231353.jpg) */}
         {mobilePhase === "track" && (
           <div className="fullscreen-player__mobile-phase1">
-            {/* Large Top Artwork with Soft Bottom Dissolve */}
-            <div className="fullscreen-player__phase1-art-wrap">
+            {/* Top Centered Pull-Down Drag Handle */}
+            <div className="fullscreen-player__phase1-drag-wrap">
               <button
                 type="button"
-                className="fullscreen-player__collapse-circle-btn"
+                className="fullscreen-player__phase1-drag-pill"
                 onClick={() => setIsExpanded(false)}
                 aria-label="Collapse player"
                 title="Collapse player"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
+              />
+            </div>
 
+            {/* Large Top Artwork with Soft Bottom Dissolve */}
+            <div className="fullscreen-player__phase1-art-wrap">
               {currentTrack.artwork ? (
                 <img
                   src={currentTrack.artwork}
@@ -673,8 +673,8 @@ export function FullScreenPlayer() {
               {/* Track Info Row */}
               <div className="fullscreen-player__phase1-info-row">
                 <div className="fullscreen-player__phase1-titles">
-                  <h2 className="fullscreen-player__phase1-title">{currentTrack.title}</h2>
-                  <p className="fullscreen-player__phase1-artist">{currentTrack.artist}</p>
+                  <h2 className="fullscreen-player__phase1-title">{cleanTrackTitle(currentTrack.title, currentTrack.artist)}</h2>
+                  <p className="fullscreen-player__phase1-artist">{decodeHtmlEntities(currentTrack.artist)}</p>
                 </div>
 
                 {/* Circular More Options Button */}
@@ -778,10 +778,16 @@ export function FullScreenPlayer() {
                     }
                   }}
                   aria-label="Track progress"
-                  style={{ accentColor: "#ffffff" }}
                 />
                 <div className="fullscreen-player__time-row">
                   <span>{formatTime(scrubPosition !== null ? scrubPosition : position)}</span>
+                  <span className="fullscreen-player__quality-badge">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+                      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+                    </svg>
+                    Hi-Quality
+                  </span>
                   <span>{formatRemainingTime(scrubPosition !== null ? scrubPosition : position, duration)}</span>
                 </div>
               </div>
@@ -807,13 +813,13 @@ export function FullScreenPlayer() {
                   aria-label={isPlaying ? "Pause" : "Play"}
                 >
                   {isPlaying ? (
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="5" y="4" width="4.5" height="16" rx="1.5" />
-                      <rect x="14.5" y="4" width="4.5" height="16" rx="1.5" />
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="5" y="3" width="4.5" height="18" rx="2" />
+                      <rect x="14.5" y="3" width="4.5" height="18" rx="2" />
                     </svg>
                   ) : (
-                    <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: "3px" }}>
-                      <polygon points="5 3 19 12 5 21 5 3" />
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: "4px" }}>
+                      <polygon points="5 3 20 12 5 21 5 3" />
                     </svg>
                   )}
                 </button>
@@ -837,7 +843,7 @@ export function FullScreenPlayer() {
                   type="button"
                   className="fullscreen-player__vol-icon-btn"
                   onClick={toggleMute}
-                  aria-label="Mute"
+                  aria-label={isMuted ? "Unmute" : "Mute"}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
@@ -852,6 +858,9 @@ export function FullScreenPlayer() {
                   step="0.01"
                   value={isMuted ? 0 : volume}
                   onChange={(e) => setVolume(Number(e.target.value))}
+                  style={{
+                    background: `linear-gradient(to right, #ffffff ${(isMuted ? 0 : volume) * 100}%, rgba(255, 255, 255, 0.25) ${(isMuted ? 0 : volume) * 100}%)`,
+                  }}
                   aria-label="Volume"
                 />
 
@@ -878,12 +887,12 @@ export function FullScreenPlayer() {
                   aria-label="Shuffle"
                   title="Shuffle"
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="16 3 21 3 21 8" />
-                    <line x1="4" y1="20" x2="21" y2="3" />
-                    <polyline points="21 16 21 21 16 21" />
-                    <line x1="15" y1="15" x2="21" y2="21" />
-                    <line x1="4" y1="4" x2="9" y2="9" />
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 3h5v5" />
+                    <path d="M4 20L21 3" />
+                    <path d="M21 16v5h-5" />
+                    <path d="M15 15l6 6" />
+                    <path d="M4 4l5 5" />
                   </svg>
                 </button>
 
@@ -894,11 +903,14 @@ export function FullScreenPlayer() {
                   aria-label="Repeat"
                   title="Repeat"
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="17 1 21 5 17 9" />
                     <path d="M3 11V9a4 4 0 0 1 4-4h14" />
                     <polyline points="7 23 3 19 7 15" />
                     <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                    {repeatMode === "one" && (
+                      <text x="12" y="15" fontSize="8" fontWeight="bold" fill="currentColor" textAnchor="middle">1</text>
+                    )}
                   </svg>
                 </button>
 
@@ -913,7 +925,7 @@ export function FullScreenPlayer() {
                   aria-label="Autoplay"
                   title="Autoplay similar tracks"
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18.178 8c5.096 0 5.096 8 0 8-2.678 0-4.678-2.667-6.178-4.667-1.5 2-3.5 4.667-6.178 4.667-5.096 0-5.096-8 0-8 2.678 0 4.678 2.667 6.178 4.667 1.5-2 3.5-4.667 6.178-4.667z" />
                   </svg>
                 </button>
@@ -925,11 +937,11 @@ export function FullScreenPlayer() {
                   aria-label="Open lyrics"
                   title="Open lyrics"
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="3" y1="6" x2="16" y2="6" />
-                    <line x1="3" y1="12" x2="14" y2="12" />
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="6" x2="15" y2="6" />
+                    <line x1="3" y1="12" x2="15" y2="12" />
                     <line x1="3" y1="18" x2="11" y2="18" />
-                    <path d="M19 8v8a2 2 0 1 1-2-2h2" />
+                    <path d="M18 10v7a2 2 0 1 1-2-2h2" />
                   </svg>
                 </button>
               </div>
