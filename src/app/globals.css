@@ -3039,39 +3039,39 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .fullscreen-player__phase1-art-wrap {
     position: relative;
     width: 100%;
-    height: 50vh;
+    height: 48vh;
     min-height: 270px;
-    max-height: 440px;
+    max-height: 420px;
     flex-shrink: 0;
     overflow: hidden;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
   }
 
   .fullscreen-player__phase1-art-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center center;
+    object-position: top center;
     display: block;
-    transform: scale(1.18); /* Crops out any baked-in YouTube letterbox bars */
-    transform-origin: center center;
+    transform: none;
     -webkit-mask-image: linear-gradient(
       180deg,
       #000000 0%,
-      #000000 30%,
-      rgba(0, 0, 0, 0.88) 46%,
-      rgba(0, 0, 0, 0.6) 62%,
-      rgba(0, 0, 0, 0.25) 78%,
-      rgba(0, 0, 0, 0.08) 90%,
+      #000000 40%,
+      rgba(0, 0, 0, 0.92) 58%,
+      rgba(0, 0, 0, 0.62) 75%,
+      rgba(0, 0, 0, 0.22) 88%,
       transparent 100%
     );
     mask-image: linear-gradient(
       180deg,
       #000000 0%,
-      #000000 30%,
-      rgba(0, 0, 0, 0.88) 46%,
-      rgba(0, 0, 0, 0.6) 62%,
-      rgba(0, 0, 0, 0.25) 78%,
-      rgba(0, 0, 0, 0.08) 90%,
+      #000000 40%,
+      rgba(0, 0, 0, 0.92) 58%,
+      rgba(0, 0, 0, 0.62) 75%,
+      rgba(0, 0, 0, 0.22) 88%,
       transparent 100%
     );
   }
@@ -3080,7 +3080,37 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     display: none;
   }
 
-  /* Floating Collapse Button at Top-Left */
+  /* Centered Pull-Down Drag Handle at Top */
+  .fullscreen-player__phase1-drag-wrap {
+    position: absolute;
+    top: max(0.65rem, env(safe-area-inset-top, 0.65rem));
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    pointer-events: auto;
+  }
+
+  .fullscreen-player__phase1-drag-pill {
+    width: 40px;
+    height: 4.5px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.45);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    transition: background 140ms ease, transform 140ms ease;
+  }
+
+  .fullscreen-player__phase1-drag-pill:hover,
+  .fullscreen-player__phase1-drag-pill:active {
+    background: rgba(255, 255, 255, 0.85);
+    transform: scaleX(1.08);
+  }
+
+  /* Floating Collapse Button at Top-Left (fallback/alternate) */
   .fullscreen-player__collapse-circle-btn {
     position: absolute;
     top: max(0.85rem, env(safe-area-inset-top, 0.85rem));
@@ -3094,7 +3124,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.15);
     color: #ffffff;
-    display: grid;
+    display: none;
     place-items: center;
     cursor: pointer;
     transition: transform 140ms ease, background 140ms ease;
@@ -3273,14 +3303,25 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     font-weight: 500;
   }
 
-  /* Phase 1 Transport Controls */
+  .fullscreen-player__quality-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.02em;
+    user-select: none;
+  }
+
+  /* Phase 1 Transport Controls: Floating Borderless Style */
   .fullscreen-player__phase1-controls {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 2.4rem;
+    gap: 3.2rem;
     width: 100%;
-    margin: 0.2rem 0;
+    margin: 0.3rem 0;
   }
 
   .fullscreen-player__phase1-ctrl-btn {
@@ -3291,33 +3332,33 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     border-radius: 50%;
     border: 0;
     background: transparent;
-    color: #ffffff;
+    color: rgba(255, 255, 255, 0.45);
     cursor: pointer;
-    transition: transform 140ms ease, opacity 140ms ease;
+    transition: transform 140ms ease, color 140ms ease, opacity 140ms ease;
   }
 
   .fullscreen-player__phase1-ctrl-btn:active {
     transform: scale(0.9);
-    opacity: 0.8;
+    color: #ffffff;
+    opacity: 1;
   }
 
   .fullscreen-player__phase1-play-btn {
     display: grid;
     place-items: center;
-    width: 4.4rem;
-    height: 4.4rem;
-    border-radius: 50%;
+    width: 4.8rem;
+    height: 4.8rem;
     border: 0;
-    background: #ffffff;
-    color: #06070a;
+    background: transparent;
+    color: #ffffff;
     cursor: pointer;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-    transition: transform 140ms ease, box-shadow 140ms ease;
+    box-shadow: none;
+    transition: transform 140ms ease, opacity 140ms ease;
   }
 
   .fullscreen-player__phase1-play-btn:active {
-    transform: scale(0.92);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    transform: scale(0.9);
+    opacity: 0.85;
   }
 
   /* Volume Row */
@@ -3338,16 +3379,38 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     place-items: center;
     cursor: pointer;
     padding: 0.2rem;
+    transition: opacity 120ms ease;
+  }
+
+  .fullscreen-player__vol-icon-btn:active {
+    opacity: 0.8;
   }
 
   .fullscreen-player__vol-slider {
     flex: 1;
-    height: 4px;
+    height: 5px;
     border-radius: 9999px;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.25);
-    accent-color: rgba(255, 255, 255, 0.85);
     outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: background 80ms ease;
+  }
+
+  .fullscreen-player__vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    border: 0;
+  }
+
+  .fullscreen-player__vol-slider::-moz-range-thumb {
+    width: 0;
+    height: 0;
+    opacity: 0;
+    border: 0;
   }
 
   /* Phase 1 Bottom Actions */
@@ -3375,10 +3438,12 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 
   .fullscreen-player__bottom-action-btn:active {
     transform: scale(0.9);
+    opacity: 0.85;
   }
 
   .fullscreen-player__bottom-action-btn--active {
     color: var(--color-accent-bright, #ffffff);
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.45));
   }
 
   .fullscreen-player__bottom-action-btn--lyrics {
