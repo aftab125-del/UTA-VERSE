@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { usePlayerStore } from "@/stores/player-store";
+import { useLikesStore } from "@/stores/likes-store";
+import { useUser } from "@/hooks/use-user";
+import { showToast } from "@/stores/toast-store";
 import { QueuePanel } from "@/components/player/queue-panel";
 import { FullScreenPlayer } from "@/components/player/full-screen-player";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
@@ -36,6 +39,22 @@ export function PlayerDock() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const hasTrack = Boolean(currentTrack);
+
+  const { user } = useUser();
+  const isLiked = useLikesStore((state) => (currentTrack ? state.isLiked(currentTrack.id) : false));
+  const toggleLike = useLikesStore((state) => state.toggleLike);
+
+  async function handleMobileLike(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!user) {
+      showToast("Sign in to save songs");
+      return;
+    }
+    if (currentTrack) {
+      const nowLiked = await toggleLike(user.id, currentTrack);
+      showToast(nowLiked ? "Added to Liked Songs" : "Removed from Liked Songs");
+    }
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -116,6 +135,29 @@ export function PlayerDock() {
                 >
                   ◀◀
                 </button>
+                {/* Mobile Green Checkmark Like Button */}
+                {hasTrack && (
+                  <button
+                    type="button"
+                    className={`player-dock__mobile-like-btn${isLiked ? " player-dock__mobile-like-btn--active" : ""}`}
+                    onClick={handleMobileLike}
+                    aria-label={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+                    title={isLiked ? "Saved to Your Library" : "Save to Your Library"}
+                  >
+                    {isLiked ? (
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" fill="#1db954" />
+                        <path d="M8 12.2l2.6 2.6L16 9.4" stroke="#000000" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="16" />
+                        <line x1="8" y1="12" x2="16" y2="12" />
+                      </svg>
+                    )}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="player-dock__play-button"
@@ -300,6 +342,13 @@ export function PlayerDock() {
                 )}
               </div>
             </div>
+          </div>
+          {/* Mobile slim hairline progress bar at bottom of card */}
+          <div className="player-dock__mobile-progress-track" aria-hidden="true">
+            <div
+              className="player-dock__mobile-progress-bar"
+              style={{ width: `${duration > 0 ? (position / duration) * 100 : 0}%` }}
+            />
           </div>
         </GlassSurface>
       </footer>

@@ -444,7 +444,18 @@ export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps
                   className="playlist-picker__item"
                   onClick={() => void handleAddToPlaylist(pl)}
                 >
-                  <span className="playlist-picker__item-name">{pl.name}</span>
+                  <div className="playlist-picker__item-left">
+                    <div className="playlist-picker__item-art">
+                      {pl.coverUrl ? (
+                        <img src={pl.coverUrl} alt="" width={36} height={36} />
+                      ) : (
+                        <div className="playlist-picker__item-art-fallback">
+                          {pl.name.slice(0, 1)}
+                        </div>
+                      )}
+                    </div>
+                    <span className="playlist-picker__item-name">{pl.name}</span>
+                  </div>
                   <span className="playlist-picker__item-count">
                     {pl.trackCount} {pl.trackCount === 1 ? "track" : "tracks"}
                   </span>

@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { CreatePlaylistModal } from "@/components/ui/create-playlist-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { getUserPlaylists } from "@/lib/music/playlists";
 import type { Playlist } from "@/types/music";
 
 interface PlaylistsGridProps {
@@ -21,26 +22,14 @@ export function PlaylistsGrid({ userId }: PlaylistsGridProps) {
   const supabase = createSupabaseBrowserClient();
 
   async function loadPlaylists() {
-    const { data } = await supabase
-      .from("playlists")
-      .select("*, playlist_tracks(count)")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    if (data) {
-      setPlaylists(data.map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        name: row.name,
-        description: row.description,
-        coverUrl: row.cover_url,
-        folderId: row.folder_id,
-        isPublic: row.is_public,
-        trackCount: row.playlist_tracks[0]?.count ?? 0,
-        totalDuration: 0,
-        createdAt: row.created_at,
-      })));
+    try {
+      const data = await getUserPlaylists(userId, supabase);
+      setPlaylists(data);
+    } catch (err) {
+      console.error("[PlaylistsGrid] Failed to load playlists:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   useEffect(() => { void loadPlaylists(); }, [userId]);
@@ -97,11 +86,7 @@ export function PlaylistsGrid({ userId }: PlaylistsGridProps) {
             <div key={pl.id} className="playlist-card">
               <Link href={`/playlists/${pl.id}`} className="playlist-card__link">
                 <div className="playlist-card__art">
-                  {pl.coverUrl ? (
-                    <img src={pl.coverUrl} alt="" width={160} height={160} />
-                  ) : (
-                    <ArtworkTile artwork="" title={pl.name} size="large" />
-                  )}
+                  <ArtworkTile artwork={pl.coverUrl || ""} title={pl.name} size="large" />
                 </div>
                 <div className="playlist-card__info">
                   <strong>{pl.name}</strong>
