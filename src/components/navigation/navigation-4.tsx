@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { CreatePlaylistModal } from "@/components/ui/create-playlist-modal";
 
 interface NavItem {
   href: string;
@@ -65,7 +66,9 @@ const navItems: NavItem[] = [
 
 export function Navigation4() {
   const pathname = usePathname();
+  const router = useRouter();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   return (
     <>
@@ -120,26 +123,99 @@ export function Navigation4() {
         <div className="nav4-footer-mark" aria-hidden="true" />
       </aside>
 
-      {/* Mobile Bottom Tab Bar (Icon-only) */}
+      {/* Mobile Bottom Tab Bar (With Labels & Create Button matching reference) */}
       <nav className="nav4-bottom-bar" aria-label="Mobile navigation">
         <div className="nav4-bottom-bar__items">
-          {navItems.map((item) => {
-            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          {/* Home */}
+          <Link
+            href="/"
+            className={`nav4-bottom-bar__btn${pathname === "/" ? " nav4-bottom-bar__btn--active" : ""}`}
+            aria-label="Home"
+            aria-current={pathname === "/" ? "page" : undefined}
+          >
+            <span className="nav4-bottom-bar__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill={pathname === "/" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z" />
+              </svg>
+            </span>
+            <span className="nav4-bottom-bar__label">Home</span>
+          </Link>
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`nav4-bottom-bar__btn${isActive ? " nav4-bottom-bar__btn--active" : ""}`}
-                aria-label={item.label}
-                aria-current={isActive ? "page" : undefined}
-              >
-                <span className="nav4-bottom-bar__icon">{item.icon}</span>
-              </Link>
-            );
-          })}
+          {/* Search */}
+          <Link
+            href="/search"
+            className={`nav4-bottom-bar__btn${pathname.startsWith("/search") ? " nav4-bottom-bar__btn--active" : ""}`}
+            aria-label="Search"
+            aria-current={pathname.startsWith("/search") ? "page" : undefined}
+          >
+            <span className="nav4-bottom-bar__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </span>
+            <span className="nav4-bottom-bar__label">Search</span>
+          </Link>
+
+          {/* Your Library */}
+          <Link
+            href="/playlists"
+            className={`nav4-bottom-bar__btn${pathname.startsWith("/playlists") ? " nav4-bottom-bar__btn--active" : ""}`}
+            aria-label="Your Library"
+            aria-current={pathname.startsWith("/playlists") ? "page" : undefined}
+          >
+            <span className="nav4-bottom-bar__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+            </span>
+            <span className="nav4-bottom-bar__label">Your Library</span>
+          </Link>
+
+          {/* Discover */}
+          <Link
+            href="/discover"
+            className={`nav4-bottom-bar__btn${pathname.startsWith("/discover") ? " nav4-bottom-bar__btn--active" : ""}`}
+            aria-label="Discover"
+            aria-current={pathname.startsWith("/discover") ? "page" : undefined}
+          >
+            <span className="nav4-bottom-bar__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+              </svg>
+            </span>
+            <span className="nav4-bottom-bar__label">Discover</span>
+          </Link>
+
+          {/* Create */}
+          <button
+            type="button"
+            className="nav4-bottom-bar__btn nav4-bottom-bar__btn--create"
+            onClick={() => setCreateModalOpen(true)}
+            aria-label="Create playlist"
+          >
+            <span className="nav4-bottom-bar__icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </span>
+            <span className="nav4-bottom-bar__label">Create</span>
+          </button>
         </div>
       </nav>
+
+      {/* Quick Create Playlist Modal */}
+      <CreatePlaylistModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={(pl) => {
+          setCreateModalOpen(false);
+          router.push(`/playlists/${pl.id}`);
+        }}
+      />
     </>
   );
 }

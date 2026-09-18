@@ -19,14 +19,26 @@ interface TrackMeta {
   duration: number;
 }
 
-function mapPlaylist(row: PlaylistRow & { playlist_tracks: { count: number }[] }): Playlist {
-  const trackCount = row.playlist_tracks[0]?.count ?? 0;
+function mapPlaylist(
+  row: PlaylistRow & {
+    playlist_tracks?: Array<{ count?: number; artwork?: string | null; position?: number }>;
+  }
+): Playlist {
+  const tracks = row.playlist_tracks ?? [];
+  const trackCount =
+    tracks[0] && typeof tracks[0].count === "number"
+      ? (tracks[0].count as number)
+      : tracks.length;
+
+  const sorted = [...tracks].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const firstArt = sorted.find((t) => Boolean(t.artwork))?.artwork || null;
+
   return {
     id: row.id,
     userId: row.user_id,
     name: row.name,
     description: row.description,
-    coverUrl: row.cover_url,
+    coverUrl: row.cover_url || firstArt,
     folderId: row.folder_id,
     isPublic: row.is_public,
     trackCount,
@@ -40,21 +52,21 @@ function mapPlaylist(row: PlaylistRow & { playlist_tracks: { count: number }[] }
 export async function getUserPlaylists(userId: string, client?: Client): Promise<Playlist[]> {
   const { data, error } = await getClient(client)
     .from("playlists")
-    .select("*, playlist_tracks(count)")
+    .select("*, playlist_tracks(artwork, position)")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(`Unable to load playlists: ${error.message}`);
-  return data.map((row) => mapPlaylist(row));
+  return ((data ?? []) as unknown as Parameters<typeof mapPlaylist>[0][]).map((row) => mapPlaylist(row));
 }
 
 export async function getPlaylistById(playlistId: string, client?: Client): Promise<Playlist | null> {
   const { data, error } = await getClient(client)
     .from("playlists")
-    .select("*, playlist_tracks(count)")
+    .select("*, playlist_tracks(artwork, position)")
     .eq("id", playlistId)
     .maybeSingle();
   if (error) throw new Error(`Unable to load playlist: ${error.message}`);
-  return data ? mapPlaylist(data) : null;
+  return data ? mapPlaylist(data as unknown as Parameters<typeof mapPlaylist>[0]) : null;
 }
 
 /**
@@ -65,7 +77,7 @@ export async function getPlaylistWithTracks(playlistId: string, client?: Client)
   const supabase = getClient(client);
   const { data: playlist, error: playlistError } = await supabase
     .from("playlists")
-    .select("*, playlist_tracks(count)")
+    .select("*, playlist_tracks(artwork, position)")
     .eq("id", playlistId)
     .maybeSingle();
   if (playlistError) throw new Error(`Unable to load playlist: ${playlistError.message}`);
@@ -96,8 +108,9 @@ export async function getPlaylistWithTracks(playlistId: string, client?: Client)
     };
   });
 
-  const base = mapPlaylist(playlist);
-  return { ...base, tracks };
+  const base = mapPlaylist(playlist as unknown as Parameters<typeof mapPlaylist>[0]);
+  const effectiveCover = base.coverUrl || tracks.find((t) => Boolean(t.artwork))?.artwork || null;
+  return { ...base, coverUrl: effectiveCover, tracks };
 }
 
 export async function createPlaylist(
@@ -109,10 +122,10 @@ export async function createPlaylist(
   const { data, error } = await getClient(client)
     .from("playlists")
     .insert({ user_id: userId, name, description: description ?? null })
-    .select("*, playlist_tracks(count)")
+    .select("*, playlist_tracks(artwork, position)")
     .single();
   if (error) throw new Error(`Unable to create playlist: ${error.message}`);
-  return mapPlaylist(data);
+  return mapPlaylist(data as unknown as Parameters<typeof mapPlaylist>[0]);
 }
 
 export async function updatePlaylist(
@@ -124,10 +137,10 @@ export async function updatePlaylist(
     .from("playlists")
     .update(updates)
     .eq("id", playlistId)
-    .select("*, playlist_tracks(count)")
+    .select("*, playlist_tracks(artwork, position)")
     .single();
   if (error) throw new Error(`Unable to update playlist: ${error.message}`);
-  return mapPlaylist(data);
+  return mapPlaylist(data as unknown as Parameters<typeof mapPlaylist>[0]);
 }
 
 export async function deletePlaylist(playlistId: string, client?: Client): Promise<void> {
