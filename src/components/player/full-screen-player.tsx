@@ -81,6 +81,116 @@ export function FullScreenPlayer() {
   // Timeline scrubbing state
   const [scrubPosition, setScrubPosition] = useState<number | null>(null);
 
+  // Mobile swipe-down gesture state
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
+  const mobilePhase1Ref = useRef<HTMLDivElement>(null);
+
+  const touchStartRef = useRef<{
+    y: number;
+    x: number;
+    time: number;
+    shouldHandle: boolean;
+  }>({
+    y: 0,
+    x: 0,
+    time: 0,
+    shouldHandle: false,
+  });
+
+  const handleCollapse = useCallback(() => {
+    setIsDismissing(true);
+    setTimeout(() => {
+      setIsExpanded(false);
+      setIsDismissing(false);
+      setDragY(0);
+      setIsDragging(false);
+    }, 240);
+  }, [setIsExpanded]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length !== 1 || isDismissing) return;
+    const touch = e.touches[0];
+    const target = e.target as HTMLElement | null;
+
+    // Never intercept range sliders (scrubbing/volume)
+    if (target?.closest("input[type='range']")) {
+      touchStartRef.current.shouldHandle = false;
+      return;
+    }
+
+    // In Phase 1: don't intercept if scrolled down into content
+    if (mobilePhase === "track" && mobilePhase1Ref.current && mobilePhase1Ref.current.scrollTop > 5) {
+      touchStartRef.current.shouldHandle = false;
+      return;
+    }
+
+    // In Phase 2: check if lyrics scrolled down
+    if (mobilePhase === "lyrics" && mobileLyricsContainerRef.current && mobileLyricsContainerRef.current.scrollTop > 5) {
+      if (!target?.closest(".fullscreen-player__phase2-drag-handle, .fullscreen-player__phase2-header")) {
+        touchStartRef.current.shouldHandle = false;
+        return;
+      }
+    }
+
+    touchStartRef.current = {
+      y: touch.clientY,
+      x: touch.clientX,
+      time: Date.now(),
+      shouldHandle: true,
+    };
+  }, [isDismissing, mobilePhase]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current.shouldHandle || e.touches.length !== 1 || isDismissing) return;
+    const touch = e.touches[0];
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    const deltaX = touch.clientX - touchStartRef.current.x;
+
+    // Only drag down if vertical displacement clearly dominates
+    if (deltaY > 8 && deltaY > Math.abs(deltaX)) {
+      if (mobilePhase === "track" && mobilePhase1Ref.current && mobilePhase1Ref.current.scrollTop > 5) {
+        return;
+      }
+      if (mobilePhase === "lyrics" && mobileLyricsContainerRef.current && mobileLyricsContainerRef.current.scrollTop > 5) {
+        const target = e.target as HTMLElement | null;
+        if (!target?.closest(".fullscreen-player__phase2-drag-handle, .fullscreen-player__phase2-header")) {
+          return;
+        }
+      }
+
+      setIsDragging(true);
+      setDragY(deltaY);
+    } else if (deltaY < 0 && isDragging) {
+      setDragY(0);
+    }
+  }, [isDismissing, isDragging, mobilePhase]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current.shouldHandle || isDismissing) return;
+    const touch = e.changedTouches[0];
+    const deltaY = touch ? touch.clientY - touchStartRef.current.y : dragY;
+    const deltaTime = Math.max(1, Date.now() - touchStartRef.current.time);
+    const velocityY = deltaY / deltaTime;
+
+    touchStartRef.current.shouldHandle = false;
+    setIsDragging(false);
+
+    // Dismiss if pulled down > 110px OR flicked downward fast (> 0.45 px/ms with > 40px distance)
+    if (deltaY > 110 || (deltaY > 40 && velocityY > 0.45)) {
+      handleCollapse();
+    } else {
+      setDragY(0);
+    }
+  }, [dragY, handleCollapse, isDismissing]);
+
+  const handleTouchCancel = useCallback(() => {
+    touchStartRef.current.shouldHandle = false;
+    setIsDragging(false);
+    setDragY(0);
+  }, []);
+
   // User manual scroll lock (prevents auto-scroll fighting user)
   const userScrolledRef = useRef(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -352,17 +462,35 @@ export function FullScreenPlayer() {
 
   return (
     <div
-      className="fullscreen-player"
+      className={`fullscreen-player${isDismissing ? " fullscreen-player--dismissing" : ""}${isDragging ? " fullscreen-player--dragging" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label="Expanded music player with lyrics"
       onWheel={(e) => e.stopPropagation()}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
       style={{
         "--theme-dominant": palette?.dominant ?? "rgb(139, 92, 246)",
         "--theme-dominant-hex": palette?.dominantHex ?? "#8b5cf6",
         "--theme-mobile-bg":
           palette?.mobileBackgroundGradient ??
           "linear-gradient(180deg, #221a36 0%, #141022 42%, #0a0812 100%)",
+        transform: isDismissing
+          ? "translateY(100%)"
+          : dragY > 0
+          ? `translateY(${dragY}px)`
+          : undefined,
+        transition: isDismissing
+          ? "transform 240ms cubic-bezier(0.32, 1, 0.23, 1), border-radius 240ms ease"
+          : isDragging
+          ? "none"
+          : dragY === 0
+          ? "transform 240ms cubic-bezier(0.25, 1, 0.5, 1), border-radius 240ms ease"
+          : undefined,
+        borderTopLeftRadius: dragY > 0 || isDismissing ? 24 : undefined,
+        borderTopRightRadius: dragY > 0 || isDismissing ? 24 : undefined,
       } as React.CSSProperties}
     >
       {/* Double-buffered ambient background with smooth cross-fading */}
@@ -399,7 +527,7 @@ export function FullScreenPlayer() {
           <button
             type="button"
             className="fullscreen-player__collapse-btn"
-            onClick={() => setIsExpanded(false)}
+            onClick={handleCollapse}
             aria-label="Collapse player"
             title="Collapse player (Esc)"
           >
@@ -416,7 +544,7 @@ export function FullScreenPlayer() {
           <button
             type="button"
             className="fullscreen-player__close-btn"
-            onClick={() => setIsExpanded(false)}
+            onClick={handleCollapse}
             aria-label="Close player"
             title="Close player"
           >
@@ -643,13 +771,13 @@ export function FullScreenPlayer() {
       <div className="fullscreen-player__mobile-view">
         {/* PHASE 1: NOW PLAYING / TRACK PHASE (matches media_1789028231353.jpg) */}
         {mobilePhase === "track" && (
-          <div className="fullscreen-player__mobile-phase1">
+          <div className="fullscreen-player__mobile-phase1" ref={mobilePhase1Ref}>
             {/* Top Centered Pull-Down Drag Handle */}
             <div className="fullscreen-player__phase1-drag-wrap">
               <button
                 type="button"
                 className="fullscreen-player__phase1-drag-pill"
-                onClick={() => setIsExpanded(false)}
+                onClick={handleCollapse}
                 aria-label="Collapse player"
                 title="Collapse player"
               />

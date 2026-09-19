@@ -2560,6 +2560,15 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   }
 }
 
+@keyframes fullscreen-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 .fullscreen-player__desktop-view {
   position: relative;
   z-index: 2;
@@ -3038,6 +3047,17 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     justify-content: center;
   }
 
+  .fullscreen-player {
+    animation: fullscreen-slide-up 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+    touch-action: pan-y;
+  }
+
+  .fullscreen-player--dragging,
+  .fullscreen-player--dismissing {
+    animation: none !important;
+  }
+
   .fullscreen-player__desktop-view {
     display: none !important;
   }
@@ -3127,7 +3147,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   /* Centered Pull-Down Drag Handle at Top */
   .fullscreen-player__phase1-drag-wrap {
     position: absolute;
-    top: max(0.65rem, env(safe-area-inset-top, 0.65rem));
+    top: max(0.5rem, env(safe-area-inset-top, 0.5rem));
     left: 0;
     right: 0;
     display: flex;
@@ -3135,16 +3155,20 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     align-items: center;
     z-index: 10;
     pointer-events: auto;
+    touch-action: none;
+    padding: 0.5rem 0 1rem;
+    cursor: grab;
   }
 
   .fullscreen-player__phase1-drag-pill {
-    width: 40px;
-    height: 4.5px;
+    width: 44px;
+    height: 5px;
     border-radius: 9999px;
     background: rgba(255, 255, 255, 0.45);
     border: 0;
     padding: 0;
-    cursor: pointer;
+    cursor: grab;
+    touch-action: none;
     transition: background 140ms ease, transform 140ms ease;
   }
 

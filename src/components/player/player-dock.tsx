@@ -8,7 +8,7 @@ import { useUser } from "@/hooks/use-user";
 import { showToast } from "@/stores/toast-store";
 import { QueuePanel } from "@/components/player/queue-panel";
 import { FullScreenPlayer } from "@/components/player/full-screen-player";
-import { LikeButton, AddToPlaylistButton, AddToQueueButton } from "@/components/ui/track-actions";
+import { LikeButton, AddToQueueButton, PlaylistPickerModal } from "@/components/ui/track-actions";
 import { GlassSurface } from "@/components/reactbits/GlassSurface";
 
 export function PlayerDock() {
@@ -35,6 +35,7 @@ export function PlayerDock() {
   const setIsExpanded = usePlayerStore((state) => state.setIsExpanded);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [playlistModalOpen, setPlaylistModalOpen] = useState(false);
   const [scrubPosition, setScrubPosition] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -278,22 +279,17 @@ export function PlayerDock() {
                     <div className="player-dock__menu-divider" />
                     {currentTrack && (
                       <>
-                        <AddToPlaylistButton
-                          track={currentTrack}
-                          renderTrigger={(openModal) => (
-                            <button
-                              type="button"
-                              className="player-dock__menu-btn"
-                              onClick={() => {
-                                setMenuOpen(false);
-                                openModal();
-                              }}
-                            >
-                              <span className="player-dock__menu-icon">+</span>
-                              <span>Add to playlist</span>
-                            </button>
-                          )}
-                        />
+                        <button
+                          type="button"
+                          className="player-dock__menu-btn"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setPlaylistModalOpen(true);
+                          }}
+                        >
+                          <span className="player-dock__menu-icon">+</span>
+                          <span>Add to playlist</span>
+                        </button>
                         <AddToQueueButton
                           track={currentTrack}
                           renderTrigger={(addToQueue) => (
@@ -354,6 +350,9 @@ export function PlayerDock() {
       </footer>
       <QueuePanel />
       <FullScreenPlayer />
+      {playlistModalOpen && currentTrack && (
+        <PlaylistPickerModal track={currentTrack} onClose={() => setPlaylistModalOpen(false)} />
+      )}
     </>
   );
 }
