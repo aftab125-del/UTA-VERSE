@@ -104,7 +104,7 @@ type PlayerState = {
   isShuffled: boolean;
   isExpanded: boolean;
   error: string | null;
-  setTrack: (track: Track, queue?: Track[]) => Promise<void>;
+  setTrack: (track: Track, queue?: Track[], options?: { preserveShuffleOrder?: boolean }) => Promise<void>;
   shufflePlay: (tracks: Track[], startIndex?: number) => Promise<void>;
   play: () => Promise<void>;
   togglePlayPause: () => Promise<void>;
@@ -128,6 +128,7 @@ type PlayerState = {
 let audioEngine: AudioEngine | null = null;
 let playbackRequestId = 0;
 let consecutivePlaybackErrors = 0;
+const trackRetryAttempts = new Map<string, number>();
 const resolvedSourceCache = new Map<string, string>();
 const inFlightResolutions = new Map<string, Promise<string>>();
 const historyCooldown = new Map<string, number>();
@@ -141,11 +142,15 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-async function resolveTrackSource(track: Track): Promise<string> {
-  const cachedSource = resolvedSourceCache.get(track.id);
-  if (cachedSource) return cachedSource;
+async function resolveTrackSource(track: Track, bypassCache = false): Promise<string> {
+  if (!bypassCache) {
+    const cachedSource = resolvedSourceCache.get(track.id);
+    if (cachedSource) return cachedSource;
+  } else {
+    resolvedSourceCache.delete(track.id);
+  }
 
-  const existing = inFlightResolutions.get(track.id);
+  const existing = !bypassCache ? inFlightResolutions.get(track.id) : null;
   if (existing) return existing;
 
   const promise = (async () => {
@@ -167,6 +172,7 @@ async function resolveTrackSource(track: Track): Promise<string> {
             artist: track.artist,
             videoId: videoIdOverride || inferredVideoId,
             trackId: track.id,
+            bypassCache,
           }),
         });
         const data = (await response.json().catch(() => ({}))) as {
@@ -199,7 +205,9 @@ async function resolveTrackSource(track: Track): Promise<string> {
     }
   })();
 
-  inFlightResolutions.set(track.id, promise);
+  if (!bypassCache) {
+    inFlightResolutions.set(track.id, promise);
+  }
   return promise;
 }
 
@@ -262,7 +270,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isExpanded: false,
   error: null,
 
-  setTrack: async (track, newQueue) => {
+  setTrack: async (track, newQueue, options) => {
     const currentQueue = get().queue;
     const queue = newQueue ?? (currentQueue.some((item) => item.id === track.id) ? currentQueue : [track]);
     if (get().currentTrack?.id === track.id && audioEngine?.hasLoadedSource()) {
@@ -290,7 +298,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     let queueIndex = Math.max(0, queue.findIndex((item) => item.id === track.id));
     let preShuffleQueue = isSameQueue ? get().preShuffleQueue : null;
 
-    if (!isSameQueue && get().isShuffled && queue.length > 1) {
+    if (options?.preserveShuffleOrder) {
+      preShuffleQueue = get().preShuffleQueue ?? queue;
+      effectiveQueue = queue;
+      queueIndex = 0;
+    } else if (!isSameQueue && get().isShuffled && queue.length > 1) {
       preShuffleQueue = queue;
       const others = queue.filter((t) => t.id !== track.id);
       effectiveQueue = [track, ...fisherYatesShuffle(others)];
@@ -328,6 +340,92 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
     updateMediaSessionPositionState({ duration: track.duration, position: 0 });
 
+    const attemptFallbackOrAdvance = async (failedReason: string) => {
+      if (!isCurrentRequest(requestId, track, get)) return;
+
+      const attempts = trackRetryAttempts.get(track.id) ?? 0;
+      // Allow 1 live upstream fallback attempt per track if not a custom local audioUrl
+      if (attempts < 1 && !track.audioUrl) {
+        trackRetryAttempts.set(track.id, attempts + 1);
+        console.warn(`[PlayerStore] Playback stalled/failed for "${track.title}" (${track.id}). Retrying with live upstream stream fallback (attempt ${attempts + 1})...`);
+        resolvedSourceCache.delete(track.id);
+        set({ isResolving: true, isLoading: true, error: null });
+
+        try {
+          const fallbackUrl = await resolveTrackSource(track, true);
+          if (!isCurrentRequest(requestId, track, get)) return;
+
+          const engine = getAudioEngine();
+          engine.load(fallbackUrl, {
+            onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
+            onReady: (duration) => {
+              set({ duration, isLoading: false, isResolving: false });
+              updateMediaSessionPositionState({ duration, position: 0 });
+            },
+            onProgress: (position, duration, buffered) => {
+              set({ position, duration, buffered });
+              if (duration > 0 && position / duration > 0.7) {
+                const { queue: q, queueIndex: qIdx } = get();
+                if (q.length > 0 && qIdx + 1 < q.length) {
+                  prefetchNextTrackSource(q[qIdx + 1]);
+                }
+              }
+            },
+            onPlaying: () => {
+              consecutivePlaybackErrors = 0;
+              trackRetryAttempts.delete(track.id);
+              set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
+              setMediaSessionPlaybackState("playing");
+              void recordHistory(track.id, { title: track.title, artist: track.artist, artwork: track.artwork, duration: track.duration });
+              const { queue: q, queueIndex: qIdx } = get();
+              if (q.length > 0 && qIdx + 1 < q.length) {
+                prefetchNextTrackSource(q[qIdx + 1]);
+              }
+            },
+            onPaused: () => { set({ isPlaying: false }); setMediaSessionPlaybackState("paused"); },
+            onEnded: () => {
+              const { repeatMode } = get();
+              if (repeatMode === "one") {
+                const eng = getAudioEngine();
+                eng.seek(0);
+                void eng.play();
+              } else {
+                get().next();
+              }
+            },
+            onError: (fallbackErrMessage) => {
+              handleFatalFailure(fallbackErrMessage);
+            },
+          });
+
+          engine.setVolume(get().isMuted ? 0 : get().volume);
+          set({ isResolving: false });
+          await engine.play();
+          return;
+        } catch (fallbackError) {
+          console.warn("[PlayerStore] Upstream fallback resolution failed:", fallbackError);
+        }
+      }
+
+      handleFatalFailure(failedReason);
+    };
+
+    const handleFatalFailure = (message: string) => {
+      if (!isCurrentRequest(requestId, track, get)) return;
+      trackRetryAttempts.delete(track.id);
+      consecutivePlaybackErrors++;
+      console.warn("[PlayerStore] Playback exhausted all retries for track:", track.id, message, `(consecutive: ${consecutivePlaybackErrors})`);
+      const { queue: q, queueIndex: qIdx } = get();
+      if (consecutivePlaybackErrors < 3 && q.length > 0 && qIdx + 1 < q.length) {
+        console.info("[PlayerStore] Auto-advancing past unplayable track to keep queue alive");
+        get().next();
+      } else {
+        consecutivePlaybackErrors = 0;
+        audioEngine?.clear();
+        set({ error: message, isPlaying: false, isLoading: false, isResolving: false });
+      }
+    };
+
     try {
       const sourceUrl = track.audioUrl ?? await resolveTrackSource(track);
       if (!isCurrentRequest(requestId, track, get)) return;
@@ -351,6 +449,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         },
         onPlaying: () => {
           consecutivePlaybackErrors = 0;
+          trackRetryAttempts.delete(track.id);
           set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
           setMediaSessionPlaybackState("playing");
           void recordHistory(track.id, { title: track.title, artist: track.artist, artwork: track.artwork, duration: track.duration });
@@ -372,16 +471,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         },
         onError: (message) => {
-          consecutivePlaybackErrors++;
-          console.warn("[PlayerStore] Playback error on track:", track.id, message, `(consecutive: ${consecutivePlaybackErrors})`);
-          const { queue: q, queueIndex: qIdx } = get();
-          if (consecutivePlaybackErrors < 3 && q.length > 0 && qIdx + 1 < q.length) {
-            console.info("[PlayerStore] Auto-advancing past failed track to keep queue alive");
-            get().next();
-          } else {
-            consecutivePlaybackErrors = 0;
-            set({ error: message, isPlaying: false, isLoading: false, isResolving: false });
-          }
+          void attemptFallbackOrAdvance(message);
         },
       });
       engine.setVolume(get().isMuted ? 0 : get().volume);
@@ -389,18 +479,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       await engine.play();
     } catch (error) {
       if (!isCurrentRequest(requestId, track, get)) return;
-      consecutivePlaybackErrors++;
       const message = getErrorMessage(error, "Playback could not start.");
-      console.error("[PlayerStore] Track resolution or playback failed", { trackId: track.id, message, consecutivePlaybackErrors });
-      const { queue: q, queueIndex: qIdx } = get();
-      if (consecutivePlaybackErrors < 3 && q.length > 0 && qIdx + 1 < q.length) {
-        console.info("[PlayerStore] Auto-advancing past unresolvable track to keep queue alive");
-        get().next();
-      } else {
-        consecutivePlaybackErrors = 0;
-        audioEngine?.clear();
-        set({ error: message, isPlaying: false, isLoading: false, isResolving: false });
-      }
+      console.error("[PlayerStore] Initial track resolution or playback failed", { trackId: track.id, message });
+      void attemptFallbackOrAdvance(message);
     }
   },
 
@@ -532,89 +613,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const shuffledOthers = fisherYatesShuffle(others);
     const newQueue = [startTrack, ...shuffledOthers];
 
-    const requestId = ++playbackRequestId;
-    audioEngine?.pause();
-    set({
-      currentTrack: startTrack,
-      queue: newQueue,
-      queueIndex: 0,
-      preShuffleQueue: tracks,
-      isShuffled: true,
-      position: 0,
-      duration: startTrack.duration,
-      buffered: 0,
-      isPlaying: false,
-      isLoading: true,
-      isResolving: !startTrack.audioUrl && !resolvedSourceCache.has(startTrack.id),
-      error: null,
-    });
-    persist(get);
-
-    setMediaSessionMetadata(startTrack);
-    setMediaSessionPlaybackState("paused");
-    updateMediaSessionPositionState({ duration: startTrack.duration, position: 0 });
-
-    try {
-      const sourceUrl = startTrack.audioUrl ?? await resolveTrackSource(startTrack);
-      if (!isCurrentRequest(requestId, startTrack, get)) return;
-
-      const engine = getAudioEngine();
-      engine.load(sourceUrl, {
-        onLoading: () => set({ isLoading: true, isResolving: false, error: null }),
-        onReady: (duration) => {
-          set({ duration, isLoading: false, isResolving: false });
-          updateMediaSessionPositionState({ duration, position: 0 });
-        },
-        onProgress: (position, duration, buffered) => {
-          set({ position, duration, buffered });
-          if (duration > 0 && position / duration > 0.7) {
-            const { queue: q, queueIndex: qIdx } = get();
-            if (q.length > 0 && qIdx + 1 < q.length) {
-              prefetchNextTrackSource(q[qIdx + 1]);
-            }
-          }
-        },
-        onPlaying: () => {
-          set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
-          setMediaSessionPlaybackState("playing");
-          void recordHistory(startTrack.id, {
-            title: startTrack.title,
-            artist: startTrack.artist,
-            artwork: startTrack.artwork,
-            duration: startTrack.duration,
-          });
-          const { queue: q, queueIndex: qIdx } = get();
-          if (q.length > 0 && qIdx + 1 < q.length) {
-            prefetchNextTrackSource(q[qIdx + 1]);
-          }
-        },
-        onPaused: () => {
-          set({ isPlaying: false });
-          setMediaSessionPlaybackState("paused");
-        },
-        onEnded: () => {
-          const { repeatMode } = get();
-          if (repeatMode === "one") {
-            const engine = getAudioEngine();
-            engine.seek(0);
-            void engine.play();
-          } else {
-            get().next();
-          }
-        },
-        onError: (err) => {
-          console.error("[PlayerStore] Audio playback failed:", err);
-          set({ error: "Failed to play audio source", isPlaying: false, isLoading: false, isResolving: false });
-          setMediaSessionPlaybackState("none");
-        },
-      });
-      await engine.play();
-    } catch (err) {
-      if (!isCurrentRequest(requestId, startTrack, get)) return;
-      console.error("[PlayerStore] Failed to resolve or play track:", err);
-      set({ error: "Could not resolve audio for this track", isPlaying: false, isLoading: false, isResolving: false });
-      setMediaSessionPlaybackState("none");
-    }
+    set({ preShuffleQueue: tracks, isShuffled: true });
+    await get().setTrack(startTrack, newQueue, { preserveShuffleOrder: true });
   },
 
   // ── Queue management ──────────────────────────────────────────────────────

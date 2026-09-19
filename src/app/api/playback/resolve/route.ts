@@ -223,7 +223,14 @@ async function persistAudioToSupabase(videoId: string, title: string, artist: st
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  let body: { title?: unknown; artist?: unknown; videoId?: unknown; trackId?: unknown; id?: unknown };
+  let body: {
+    title?: unknown;
+    artist?: unknown;
+    videoId?: unknown;
+    trackId?: unknown;
+    id?: unknown;
+    bypassCache?: unknown;
+  };
 
   try {
     body = await request.json();
@@ -233,6 +240,7 @@ export async function POST(request: Request) {
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const artist = typeof body.artist === "string" ? body.artist.trim() : "";
+  const bypassCache = Boolean(body.bypassCache);
 
   // Extract videoId robustly from body.videoId, body.trackId, or body.id
   let rawVideoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
@@ -253,8 +261,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
-  // 1. Check Supabase Storage / playback_cache for instant CDN playback
-  if (requestedVideoId) {
+  // 1. Check Supabase Storage / playback_cache for instant CDN playback (unless bypassCache requested)
+  if (requestedVideoId && !bypassCache) {
     const cachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
     if (cachedUrl) {
       console.info(`[PlaybackResolver] [CACHE HIT] Direct Supabase CDN playback for ${requestedVideoId}`);
@@ -339,8 +347,8 @@ export async function POST(request: Request) {
     for (const candidate of rankedCandidates) {
       const videoId = candidate.id?.videoId as string;
 
-      // Check cache for this candidate if not already checked
-      if (!requestedVideoId) {
+      // Check cache for this candidate if not already checked (unless bypassCache requested)
+      if (!requestedVideoId && !bypassCache) {
         const cachedUrl = await checkSupabasePlaybackCache(videoId);
         if (cachedUrl) {
           console.info(`[PlaybackResolver] [CACHE HIT] Found candidate in Supabase Storage: ${videoId}`);
@@ -349,7 +357,7 @@ export async function POST(request: Request) {
       }
 
       const sourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${videoId}`;
-      console.info("[PlaybackResolver] Probing stream candidate", { title, artist, videoId });
+      console.info("[PlaybackResolver] Probing stream candidate", { title, artist, videoId, bypassCache });
       const stream = await probeStreamEndpoint(sourceUrl);
       console.info("[PlaybackResolver] Stream endpoint response", {
         title,
@@ -368,7 +376,10 @@ export async function POST(request: Request) {
         // Persist to Supabase Storage and database
         const cachedSourceUrl = await persistAudioToSupabase(videoId, safeTitle, safeArtist, stream.url);
 
-        return NextResponse.json({ status: "ready", sourceUrl: cachedSourceUrl, videoId });
+        // If bypassCache was requested due to CDN stall/corruption, return direct upstream stream
+        // to immediately unblock playback while cached storage updates in background
+        const returnUrl = bypassCache ? stream.url : cachedSourceUrl;
+        return NextResponse.json({ status: "ready", sourceUrl: returnUrl, videoId });
       }
 
       if (stream.status === "processing") {
