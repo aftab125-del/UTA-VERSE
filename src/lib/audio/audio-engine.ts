@@ -21,7 +21,11 @@ export class AudioEngine {
     this.element.preload = "auto";
   }
 
+  private currentSource: string | null = null;
+  private hasRetriedCurrentSource = false;
+  private lastBufferedTime = 0;
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly WATCHDOG_TIMEOUT_MS = 20_000;
 
   private clearWatchdog() {
     if (this.watchdogTimer) {
@@ -30,10 +34,52 @@ export class AudioEngine {
     }
   }
 
+  private startWatchdog(callbacks: AudioEngineCallbacks) {
+    this.clearWatchdog();
+    this.watchdogTimer = setTimeout(() => {
+      if (this.hasSource && this.element.readyState < 2) {
+        console.warn("[AudioEngine] Playback stalled or failed to load source within 20s", {
+          src: this.element.src,
+          readyState: this.element.readyState,
+          networkState: this.element.networkState,
+          hasRetried: this.hasRetriedCurrentSource,
+        });
+
+        if (!this.hasRetriedCurrentSource && this.currentSource) {
+          this.attemptFastRecovery(callbacks);
+          return;
+        }
+
+        this.clearWatchdog();
+        callbacks.onError?.("The audio playback stalled and could not load.");
+      }
+    }, AudioEngine.WATCHDOG_TIMEOUT_MS);
+  }
+
+  private attemptFastRecovery(callbacks: AudioEngineCallbacks) {
+    if (!this.currentSource) return;
+    this.hasRetriedCurrentSource = true;
+    console.info("[AudioEngine] Playback stalled/errored; attempting fast reload recovery with cache-buster");
+    const separator = this.currentSource.includes("?") ? "&" : "?";
+    const cacheBustUrl = `${this.currentSource}${separator}retry_cb=${Date.now()}`;
+
+    this.element.src = cacheBustUrl;
+    this.element.load();
+    this.startWatchdog(callbacks);
+
+    this.element.play().catch((err) => {
+      console.debug("[AudioEngine] Playback resume after reload caught:", err instanceof Error ? err.message : err);
+    });
+  }
+
   load(source: string, callbacks: AudioEngineCallbacks = {}) {
     if (!source) throw new Error("An audio source is required.");
     this.cleanupListeners?.();
     this.clearWatchdog();
+
+    this.currentSource = source;
+    this.hasRetriedCurrentSource = false;
+    this.lastBufferedTime = 0;
 
     // Reassigning src transitions the media pipeline without breaking the audio session
     this.element.src = source;
@@ -42,23 +88,29 @@ export class AudioEngine {
     this.currentCallbacks = callbacks;
     callbacks.onLoading?.();
 
-    // 12-second watchdog for stalled network or frozen background loading states
-    this.watchdogTimer = setTimeout(() => {
-      if (this.hasSource && this.element.readyState < 2) {
-        console.warn("[AudioEngine] Playback stalled or failed to load source within 12s", {
-          src: this.element.src,
-          readyState: this.element.readyState,
-          networkState: this.element.networkState,
-        });
-        this.clearWatchdog();
-        callbacks.onError?.("The audio playback stalled and could not load.");
-      }
-    }, 12_000);
+    // 20-second adaptive watchdog for slow mobile networks and background tabs
+    this.startWatchdog(callbacks);
 
     const onLoadedMetadata = () => callbacks.onReady?.(this.element.duration || 0);
     const onCanPlay = () => this.clearWatchdog();
     const onTimeUpdate = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
-    const onProgress = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
+    const onProgress = () => {
+      const buffered = this.getBufferedTime();
+      // If data is actively arriving, reset the watchdog so active downloads are never killed
+      if (buffered > this.lastBufferedTime + 0.25) {
+        this.lastBufferedTime = buffered;
+        if (this.element.readyState < 2) {
+          this.startWatchdog(callbacks);
+        }
+      }
+      callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, buffered);
+    };
+    const onWaiting = () => {
+      callbacks.onLoading?.();
+    };
+    const onStalled = () => {
+      console.debug("[AudioEngine] Audio pipeline stalled waiting for stream data");
+    };
     const onSeeked = () => callbacks.onProgress?.(this.element.currentTime, this.element.duration || 0, this.getBufferedTime());
     const onPlaying = () => {
       this.clearWatchdog();
@@ -70,12 +122,19 @@ export class AudioEngine {
       callbacks.onEnded?.();
     };
     const onError = () => {
-      this.clearWatchdog();
       console.error("[AudioEngine] Audio element failed to load the source", {
         code: this.element.error?.code ?? null,
         networkState: this.element.networkState,
         readyState: this.element.readyState,
+        hasRetried: this.hasRetriedCurrentSource,
       });
+
+      if (!this.hasRetriedCurrentSource && this.currentSource) {
+        this.attemptFastRecovery(callbacks);
+        return;
+      }
+
+      this.clearWatchdog();
       callbacks.onError?.("The resolved audio source could not be loaded by the browser.");
     };
 
@@ -83,6 +142,8 @@ export class AudioEngine {
     this.element.addEventListener("canplay", onCanPlay);
     this.element.addEventListener("timeupdate", onTimeUpdate);
     this.element.addEventListener("progress", onProgress);
+    this.element.addEventListener("waiting", onWaiting);
+    this.element.addEventListener("stalled", onStalled);
     this.element.addEventListener("seeked", onSeeked);
     this.element.addEventListener("playing", onPlaying);
     this.element.addEventListener("pause", onPause);
@@ -95,6 +156,8 @@ export class AudioEngine {
       this.element.removeEventListener("canplay", onCanPlay);
       this.element.removeEventListener("timeupdate", onTimeUpdate);
       this.element.removeEventListener("progress", onProgress);
+      this.element.removeEventListener("waiting", onWaiting);
+      this.element.removeEventListener("stalled", onStalled);
       this.element.removeEventListener("seeked", onSeeked);
       this.element.removeEventListener("playing", onPlaying);
       this.element.removeEventListener("pause", onPause);
@@ -143,6 +206,9 @@ export class AudioEngine {
     this.cleanupListeners = null;
     this.clearWatchdog();
     this.currentCallbacks = null;
+    this.currentSource = null;
+    this.hasRetriedCurrentSource = false;
+    this.lastBufferedTime = 0;
     this.element.pause();
     this.element.removeAttribute("src");
     this.element.load();
