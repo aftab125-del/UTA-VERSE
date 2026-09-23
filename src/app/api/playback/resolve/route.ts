@@ -106,6 +106,13 @@ async function checkSupabasePlaybackCache(videoId: string) {
       .maybeSingle();
 
     if (row?.audio_url) {
+      // Touch last_played_at asynchronously to track playback activity
+      void Promise.resolve(
+        supabase
+          .from("playback_cache")
+          .update({ last_played_at: new Date().toISOString() })
+          .eq("video_id", videoId)
+      ).catch(() => {});
       return row.audio_url;
     }
 
@@ -117,13 +124,15 @@ async function checkSupabasePlaybackCache(videoId: string) {
       try {
         const headRes = await fetch(publicUrl, { method: "HEAD", cache: "no-store" });
         if (headRes.ok) {
+          const nowIso = new Date().toISOString();
           void Promise.resolve(
             supabase
               .from("playback_cache")
               .upsert({
                 video_id: videoId,
                 audio_url: publicUrl,
-                created_at: new Date().toISOString(),
+                created_at: nowIso,
+                last_played_at: nowIso,
               }, { onConflict: "video_id" })
           ).catch(() => {});
           return publicUrl;
@@ -141,13 +150,15 @@ async function checkSupabasePlaybackCache(videoId: string) {
 
     if (Array.isArray(fileList) && fileList.some((f) => f.name === fileName || f.name.startsWith(videoId))) {
       const publicUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName).data.publicUrl;
+      const nowIso = new Date().toISOString();
       void Promise.resolve(
         supabase
           .from("playback_cache")
           .upsert({
             video_id: videoId,
             audio_url: publicUrl,
-            created_at: new Date().toISOString(),
+            created_at: nowIso,
+            last_played_at: nowIso,
           }, { onConflict: "video_id" })
       ).catch(() => {});
       return publicUrl;
@@ -163,6 +174,8 @@ async function persistAudioToSupabase(videoId: string, title: string, artist: st
   try {
     const supabase = createSupabaseAdminClient();
 
+    const nowIso = new Date().toISOString();
+
     // If it's already a Supabase public URL, just record in table
     if (streamUrl.includes(`/storage/v1/object/public/${AUDIO_BUCKET}/`)) {
       void supabase.from("playback_cache").upsert({
@@ -170,7 +183,8 @@ async function persistAudioToSupabase(videoId: string, title: string, artist: st
         title,
         artist,
         audio_url: streamUrl,
-        created_at: new Date().toISOString(),
+        created_at: nowIso,
+        last_played_at: nowIso,
       }, { onConflict: "video_id" });
       return streamUrl;
     }
@@ -210,7 +224,8 @@ async function persistAudioToSupabase(videoId: string, title: string, artist: st
       artist,
       audio_url: permanentUrl,
       file_size: buffer.length,
-      created_at: new Date().toISOString(),
+      created_at: nowIso,
+      last_played_at: nowIso,
     }, { onConflict: "video_id" });
 
     return permanentUrl;
