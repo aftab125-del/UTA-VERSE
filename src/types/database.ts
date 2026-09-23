@@ -148,9 +148,9 @@ export type Database = {
         Relationships: [];
       };
       playback_cache: {
-        Row: { video_id: string; title: string; artist: string; audio_url: string; duration: number; file_size: number; created_at: string };
-        Insert: { video_id: string; title?: string; artist?: string; audio_url: string; duration?: number; file_size?: number; created_at?: string };
-        Update: { video_id?: string; title?: string; artist?: string; audio_url?: string; duration?: number; file_size?: number; created_at?: string };
+        Row: { video_id: string; title: string; artist: string; audio_url: string; duration: number; file_size: number; created_at: string; last_played_at: string };
+        Insert: { video_id: string; title?: string; artist?: string; audio_url: string; duration?: number; file_size?: number; created_at?: string; last_played_at?: string };
+        Update: { video_id?: string; title?: string; artist?: string; audio_url?: string; duration?: number; file_size?: number; created_at?: string; last_played_at?: string };
         Relationships: [];
       };
     };
