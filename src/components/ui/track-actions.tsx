@@ -6,8 +6,9 @@ import { useUser } from "@/hooks/use-user";
 import { usePlayerStore } from "@/stores/player-store";
 import { useLikesStore } from "@/stores/likes-store";
 import { showToast } from "@/stores/toast-store";
-import { addTrackToPlaylist, createPlaylist, getUserPlaylists } from "@/lib/music/playlists";
-import type { Track, Playlist } from "@/types/music";
+import { addTrackToPlaylist, createPlaylist, type PlaylistSummary } from "@/lib/music/playlists";
+import { usePlaylistsSummaryStore } from "@/stores/playlists-summary-store";
+import type { Track } from "@/types/music";
 
 export interface TrackActionsProps {
   track: Track;
@@ -314,31 +315,22 @@ export interface PlaylistPickerModalProps {
 
 export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps) {
   const { user } = useUser();
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [loading, setLoading] = useState(true);
+  const playlists = usePlaylistsSummaryStore((s) => s.playlists);
+  const loading = usePlaylistsSummaryStore((s) => s.isLoading);
+  const loadPlaylists = usePlaylistsSummaryStore((s) => s.load);
+  const addPlaylistToStore = usePlaylistsSummaryStore((s) => s.addPlaylist);
+  const incrementTrackCount = usePlaylistsSummaryStore((s) => s.incrementTrackCount);
+
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
 
   useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    getUserPlaylists(user.id)
-      .then((data) => {
-        if (!cancelled) {
-          setPlaylists(data);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error("[PlaylistPickerModal] Load failed", err);
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+    if (user) {
+      void loadPlaylists(user.id);
+    }
+  }, [user, loadPlaylists]);
 
-  const handleAddToPlaylist = async (playlist: Playlist) => {
+  const handleAddToPlaylist = async (playlist: PlaylistSummary) => {
     try {
       await addTrackToPlaylist(playlist.id, track.id, {
         title: track.title,
@@ -346,6 +338,7 @@ export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps
         artwork: track.artwork,
         duration: track.duration,
       });
+      incrementTrackCount(playlist.id);
       showToast(`Added to ${playlist.name}`);
       onClose();
     } catch (err) {
@@ -365,6 +358,7 @@ export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps
         artwork: track.artwork,
         duration: track.duration,
       });
+      addPlaylistToStore({ id: playlist.id, name: playlist.name, trackCount: 1 });
       showToast(`Created "${playlist.name}" and added track`);
       onClose();
     } catch (err) {
@@ -444,18 +438,7 @@ export function PlaylistPickerModal({ track, onClose }: PlaylistPickerModalProps
                   className="playlist-picker__item"
                   onClick={() => void handleAddToPlaylist(pl)}
                 >
-                  <div className="playlist-picker__item-left">
-                    <div className="playlist-picker__item-art">
-                      {pl.coverUrl ? (
-                        <img src={pl.coverUrl} alt="" width={36} height={36} />
-                      ) : (
-                        <div className="playlist-picker__item-art-fallback">
-                          {pl.name.slice(0, 1)}
-                        </div>
-                      )}
-                    </div>
-                    <span className="playlist-picker__item-name">{pl.name}</span>
-                  </div>
+                  <span className="playlist-picker__item-name">{pl.name}</span>
                   <span className="playlist-picker__item-count">
                     {pl.trackCount} {pl.trackCount === 1 ? "track" : "tracks"}
                   </span>
