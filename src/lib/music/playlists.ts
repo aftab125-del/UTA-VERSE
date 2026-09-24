@@ -59,6 +59,30 @@ export async function getUserPlaylists(userId: string, client?: Client): Promise
   return ((data ?? []) as unknown as Parameters<typeof mapPlaylist>[0][]).map((row) => mapPlaylist(row));
 }
 
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  trackCount: number;
+}
+
+/** Fast, lightweight query for playlist picker: fetches only id, name, and count without bulky artworks or tracks */
+export async function getUserPlaylistsSummary(userId: string, client?: Client): Promise<PlaylistSummary[]> {
+  const { data, error } = await getClient(client)
+    .from("playlists")
+    .select("id, name, playlist_tracks(track_id)")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`Unable to load playlists: ${error.message}`);
+  return (data ?? []).map((row) => {
+    const tracks = (row as { playlist_tracks?: Array<{ track_id: string }> }).playlist_tracks ?? [];
+    return {
+      id: row.id,
+      name: row.name,
+      trackCount: tracks.length,
+    };
+  });
+}
+
 export async function getPlaylistById(playlistId: string, client?: Client): Promise<Playlist | null> {
   const { data, error } = await getClient(client)
     .from("playlists")
