@@ -1480,7 +1480,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   }
 
   .playlists-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
   }
 
   .home-stage h1 {
@@ -2132,6 +2133,56 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .playlist-card__delete { position: absolute; top: 0.5rem; right: 0.5rem; border: 0; background: rgba(10, 11, 20, 0.8); color: var(--color-muted); font-size: 0.7rem; width: 1.6rem; height: 1.6rem; border-radius: 50%; cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity 160ms ease, color 160ms ease; }
 .playlist-card:hover .playlist-card__delete { opacity: 1; }
 .playlist-card__delete:hover { color: #ff9caa; }
+
+/* ── Playlist skeleton loading ────────────────────────────────────────────── */
+.playlist-card--skeleton {
+  pointer-events: none;
+  padding: 0.75rem;
+}
+.playlist-card__art--skeleton {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+}
+.playlist-skeleton-title {
+  height: 0.95rem;
+  width: 75%;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.07);
+  margin-bottom: 0.4rem;
+}
+.playlist-skeleton-sub {
+  height: 0.75rem;
+  width: 40%;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: playlist-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes playlist-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
 
 /* ── Playlist detail ────────────────────────────────────────────────────────── */
 .playlist-detail__art {

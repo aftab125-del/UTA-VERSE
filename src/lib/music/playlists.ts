@@ -30,8 +30,16 @@ function mapPlaylist(
       ? (tracks[0].count as number)
       : tracks.length;
 
-  const sorted = [...tracks].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-  const firstArt = sorted.find((t) => Boolean(t.artwork))?.artwork || null;
+  let firstArt: string | null = null;
+  if (!row.cover_url && tracks.length > 0) {
+    let minPos = Infinity;
+    for (const t of tracks) {
+      if (t.artwork && (t.position ?? 0) < minPos) {
+        minPos = t.position ?? 0;
+        firstArt = t.artwork;
+      }
+    }
+  }
 
   return {
     id: row.id,

@@ -11,28 +11,41 @@ import type { Playlist } from "@/types/music";
 
 interface PlaylistsGridProps {
   userId: string;
+  initialPlaylists?: Playlist[];
 }
 
-export function PlaylistsGrid({ userId }: PlaylistsGridProps) {
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [loading, setLoading] = useState(true);
+export function PlaylistsGrid({ userId, initialPlaylists = [] }: PlaylistsGridProps) {
+  const [playlists, setPlaylists] = useState<Playlist[]>(initialPlaylists);
+  const [loading, setLoading] = useState(initialPlaylists.length === 0);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Playlist | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const supabase = createSupabaseBrowserClient();
+  const [supabase] = useState(() => createSupabaseBrowserClient());
 
-  async function loadPlaylists() {
-    try {
-      const data = await getUserPlaylists(userId, supabase);
-      setPlaylists(data);
-    } catch (err) {
-      console.error("[PlaylistsGrid] Failed to load playlists:", err);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    let ignore = false;
+
+    async function load() {
+      try {
+        const data = await getUserPlaylists(userId, supabase);
+        if (!ignore) {
+          setPlaylists(data);
+        }
+      } catch (err) {
+        console.error("[PlaylistsGrid] Failed to load playlists:", err);
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
     }
-  }
 
-  useEffect(() => { void loadPlaylists(); }, [userId]);
+    void load();
+
+    return () => {
+      ignore = true;
+    };
+  }, [userId, supabase]);
 
   function handleCreated(playlist: { id: string; name: string }) {
     setPlaylists((prev) => [{
@@ -64,7 +77,28 @@ export function PlaylistsGrid({ userId }: PlaylistsGridProps) {
     setDeleting(false);
   }
 
-  if (loading) return <div className="library-loading">Loading playlists…</div>;
+  if (loading) {
+    return (
+      <>
+        <div className="playlists-header">
+          <button type="button" className="liked-songs__play-btn" disabled>
+            + Create Playlist
+          </button>
+        </div>
+        <div className="playlists-grid">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="playlist-card playlist-card--skeleton">
+              <div className="playlist-card__art playlist-card__art--skeleton shimmer" />
+              <div className="playlist-card__info">
+                <div className="playlist-skeleton-title shimmer" />
+                <div className="playlist-skeleton-sub shimmer" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
