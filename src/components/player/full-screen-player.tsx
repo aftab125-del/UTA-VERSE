@@ -12,6 +12,7 @@ import {
 import { extractThemePalette, DEFAULT_PALETTE, type ThemePalette } from "@/lib/utils/color-extractor";
 import { cleanTrackTitle, decodeHtmlEntities } from "@/lib/utils/html";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton, PlaylistPickerModal } from "@/components/ui/track-actions";
+import { TrackOptionsSheet } from "@/components/player/track-options-sheet";
 import { type Track } from "@/types/music";
 import { useUser } from "@/hooks/use-user";
 import { useLikesStore } from "@/stores/likes-store";
@@ -48,10 +49,7 @@ export function FullScreenPlayer() {
   const setRepeatMode = usePlayerStore((s) => s.setRepeatMode);
   const isShuffled = usePlayerStore((s) => s.isShuffled);
   const setShuffled = usePlayerStore((s) => s.setShuffled);
-  const addToQueue = usePlayerStore((s) => s.addToQueue);
 
-  const isLiked = useLikesStore((s) => (currentTrack ? s.isLiked(currentTrack.id) : false));
-  const toggleLikeStore = useLikesStore((s) => s.toggleLike);
   const initLikes = useLikesStore((s) => s.init);
 
   const [palette, setPalette] = useState<ThemePalette | null>(null);
@@ -199,8 +197,6 @@ export function FullScreenPlayer() {
   const mobileLyricsContainerRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLDivElement>(null);
   const mobileActiveLineRef = useRef<HTMLDivElement>(null);
-  const moreMenuRefPhase1 = useRef<HTMLDivElement>(null);
-  const moreMenuRefPhase2 = useRef<HTMLDivElement>(null);
 
   const handleUserScroll = useCallback(() => {
     userScrolledRef.current = true;
@@ -251,25 +247,6 @@ export function FullScreenPlayer() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded, setIsExpanded]);
-
-  // Close more menu on click/tap outside
-  useEffect(() => {
-    if (!moreMenuOpen) return;
-    function handleClickOutside(e: MouseEvent | TouchEvent) {
-      const target = e.target as Node;
-      const inPhase1 = moreMenuRefPhase1.current?.contains(target);
-      const inPhase2 = moreMenuRefPhase2.current?.contains(target);
-      if (!inPhase1 && !inPhase2) {
-        setMoreMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("touchstart", handleClickOutside, { passive: true });
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchstart", handleClickOutside);
-    };
-  }, [moreMenuOpen]);
 
   // Extract dynamic theme palette and cross-fade background when track changes
   useEffect(() => {
@@ -806,69 +783,18 @@ export function FullScreenPlayer() {
                 </div>
 
                 {/* Circular More Options Button */}
-                <div className="fullscreen-player__more-wrapper" ref={moreMenuRefPhase1}>
+                <div className="fullscreen-player__more-wrapper">
                   <button
                     type="button"
                     className="fullscreen-player__more-circle-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setMoreMenuOpen(!moreMenuOpen);
+                      setMoreMenuOpen(true);
                     }}
                     aria-label="More options"
                   >
                     •••
                   </button>
-                  {moreMenuOpen && (
-                    <div className="fullscreen-player__more-dropdown">
-                      <button
-                        type="button"
-                        className="fullscreen-player__menu-item"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          console.log("[FullScreenPlayer] Like clicked for track:", currentTrack?.id, currentTrack?.title);
-                          setMoreMenuOpen(false);
-                          if (!user) {
-                            showToast("Sign in to like tracks");
-                            return;
-                          }
-                          try {
-                            const nowLiked = await toggleLikeStore(user.id, currentTrack);
-                            showToast(nowLiked ? "Added to Liked Songs" : "Removed from Liked Songs");
-                          } catch (err) {
-                            console.error("[FullScreenPlayer] Failed to toggle like:", err);
-                            showToast("Failed to update liked songs");
-                          }
-                        }}
-                      >
-                        {isLiked ? "♥ Remove from liked" : "♡ Like track"}
-                      </button>
-                      <button
-                        type="button"
-                        className="fullscreen-player__menu-item"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log("[FullScreenPlayer] Add to Playlist clicked for track:", currentTrack?.id, currentTrack?.title);
-                          setMoreMenuOpen(false);
-                          setPlaylistModalTrack(currentTrack);
-                        }}
-                      >
-                        + Add to playlist
-                      </button>
-                      <button
-                        type="button"
-                        className="fullscreen-player__menu-item"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log("[FullScreenPlayer] Add to Queue clicked for track:", currentTrack?.id, currentTrack?.title);
-                          setMoreMenuOpen(false);
-                          addToQueue(currentTrack);
-                          showToast("Added to queue");
-                        }}
-                      >
-                        +≡ Add to queue
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -1114,69 +1040,18 @@ export function FullScreenPlayer() {
                 </div>
               </div>
 
-              <div className="fullscreen-player__more-wrapper" ref={moreMenuRefPhase2}>
+              <div className="fullscreen-player__more-wrapper">
                 <button
                   type="button"
                   className="fullscreen-player__more-circle-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setMoreMenuOpen(!moreMenuOpen);
+                    setMoreMenuOpen(true);
                   }}
                   aria-label="More options"
                 >
                   •••
                 </button>
-                {moreMenuOpen && (
-                  <div className="fullscreen-player__more-dropdown">
-                    <button
-                      type="button"
-                      className="fullscreen-player__menu-item"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        console.log("[FullScreenPlayer] Like clicked for track:", currentTrack?.id, currentTrack?.title);
-                        setMoreMenuOpen(false);
-                        if (!user) {
-                          showToast("Sign in to like tracks");
-                          return;
-                        }
-                        try {
-                          const nowLiked = await toggleLikeStore(user.id, currentTrack);
-                          showToast(nowLiked ? "Added to Liked Songs" : "Removed from Liked Songs");
-                        } catch (err) {
-                          console.error("[FullScreenPlayer] Failed to toggle like:", err);
-                          showToast("Failed to update liked songs");
-                        }
-                      }}
-                    >
-                      {isLiked ? "♥ Remove from liked" : "♡ Like track"}
-                    </button>
-                    <button
-                      type="button"
-                      className="fullscreen-player__menu-item"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        console.log("[FullScreenPlayer] Add to Playlist clicked for track:", currentTrack?.id, currentTrack?.title);
-                        setMoreMenuOpen(false);
-                        setPlaylistModalTrack(currentTrack);
-                      }}
-                    >
-                      + Add to playlist
-                    </button>
-                    <button
-                      type="button"
-                      className="fullscreen-player__menu-item"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        console.log("[FullScreenPlayer] Add to Queue clicked for track:", currentTrack?.id, currentTrack?.title);
-                        setMoreMenuOpen(false);
-                        addToQueue(currentTrack);
-                        showToast("Added to queue");
-                      }}
-                    >
-                      +≡ Add to queue
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1312,6 +1187,14 @@ export function FullScreenPlayer() {
           </div>
         )}
       </div>
+
+      <TrackOptionsSheet
+        track={currentTrack}
+        isOpen={moreMenuOpen}
+        onClose={() => setMoreMenuOpen(false)}
+        onOpenPlaylistModal={() => setPlaylistModalTrack(currentTrack)}
+        onSwitchToLyrics={() => setMobilePhase("lyrics")}
+      />
 
       {playlistModalTrack && (
         <PlaylistPickerModal
