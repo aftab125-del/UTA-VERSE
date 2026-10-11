@@ -8,6 +8,7 @@ import { useUser } from "@/hooks/use-user";
 import { showToast } from "@/stores/toast-store";
 import { QueuePanel } from "@/components/player/queue-panel";
 import { FullScreenPlayer } from "@/components/player/full-screen-player";
+import { AmbientModePlayer } from "@/components/player/ambient-mode-player";
 import { LikeButton, AddToQueueButton, PlaylistPickerModal } from "@/components/ui/track-actions";
 import { GlassSurface } from "@/components/reactbits/GlassSurface";
 
@@ -276,6 +277,17 @@ export function PlayerDock() {
                       <span className="player-dock__menu-icon">♪</span>
                       <span>Lyrics & Full Player</span>
                     </button>
+                    <button
+                      type="button"
+                      className="player-dock__menu-btn"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        usePlayerStore.getState().setAmbientMode(true);
+                      }}
+                    >
+                      <span className="player-dock__menu-icon">⛶</span>
+                      <span>Ambient Mode</span>
+                    </button>
                     <div className="player-dock__menu-divider" />
                     {currentTrack && (
                       <>
@@ -350,6 +362,7 @@ export function PlayerDock() {
       </footer>
       <QueuePanel />
       <FullScreenPlayer />
+      <AmbientModePlayer />
       {playlistModalOpen && currentTrack && (
         <PlaylistPickerModal track={currentTrack} onClose={() => setPlaylistModalOpen(false)} />
       )}

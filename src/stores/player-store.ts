@@ -103,6 +103,7 @@ type PlayerState = {
   repeatMode: RepeatMode;
   isShuffled: boolean;
   isExpanded: boolean;
+  isAmbientMode: boolean;
   error: string | null;
   setTrack: (track: Track, queue?: Track[], options?: { preserveShuffleOrder?: boolean }) => Promise<void>;
   shufflePlay: (tracks: Track[], startIndex?: number) => Promise<void>;
@@ -123,6 +124,7 @@ type PlayerState = {
   clearQueue: () => void;
   setIsExpanded: (isExpanded: boolean) => void;
   toggleExpanded: () => void;
+  setAmbientMode: (isAmbientMode: boolean) => void;
 };
 
 let audioEngine: AudioEngine | null = null;
@@ -268,6 +270,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   repeatMode: persisted.repeatMode ?? "off",
   isShuffled: persisted.isShuffled ?? false,
   isExpanded: false,
+  isAmbientMode: false,
   error: null,
 
   setTrack: async (track, newQueue, options) => {
@@ -712,6 +715,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setIsExpanded: (isExpanded: boolean) => set({ isExpanded }),
   toggleExpanded: () => set((state) => ({ isExpanded: !state.isExpanded })),
+  setAmbientMode: (isAmbientMode: boolean) => set({ isAmbientMode }),
 }));
 
 // ── Media Session action handlers ─────────────────────────────────────────────
