@@ -86,8 +86,20 @@ export function TrackOptionsSheet({
     }
   };
 
-  const handleStartAmbientMode = () => {
+  const handleStartAmbientMode = async () => {
     onClose();
+    try {
+      if (typeof document !== "undefined" && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen().catch(() => {});
+      }
+      if (typeof window !== "undefined" && window.screen.orientation && "lock" in window.screen.orientation) {
+        await (window.screen.orientation as unknown as { lock: (o: string) => Promise<void> })
+          .lock("landscape")
+          .catch(() => {});
+      }
+    } catch {
+      // Ignored if permissions disabled
+    }
     setAmbientMode(true);
   };
 
