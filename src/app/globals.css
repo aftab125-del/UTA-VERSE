@@ -5135,10 +5135,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   font-weight: 600;
 }
 
-/* ─── Ambient Mode Experience (Photo 2) ─────────────────────────────────── */
+/* ─── Ambient Mode Experience (Photo 2 Target) ─────────────────────────── */
 .ambient-mode {
   position: fixed;
-  inset: 0;
   z-index: 12000;
   background: #06070a;
   color: #ffffff;
@@ -5148,6 +5147,28 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   user-select: none;
   -webkit-user-select: none;
   touch-action: pan-x pan-y;
+}
+
+/* Enforce 100% Widescreen Landscape across both physical orientations */
+@media (orientation: portrait) {
+  .ambient-mode {
+    width: 100vh !important;
+    height: 100vw !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+    transform-origin: center center !important;
+  }
+}
+
+@media (orientation: landscape) {
+  .ambient-mode {
+    width: 100vw !important;
+    height: 100vh !important;
+    top: 0 !important;
+    left: 0 !important;
+    transform: none !important;
+  }
 }
 
 .ambient-mode__backdrop {
@@ -5163,8 +5184,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   inset: -25%;
   background-size: cover;
   background-position: center;
-  filter: blur(75px) saturate(1.4);
-  opacity: 0.42;
+  filter: blur(80px) saturate(1.4);
+  opacity: 0.45;
   transform: scale(1.25);
   transition: background-image 600ms ease;
 }
@@ -5173,13 +5194,13 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   position: absolute;
   inset: 0;
   background: var(--ambient-bg);
-  opacity: 0.5;
+  opacity: 0.52;
 }
 
 .ambient-mode__backdrop-vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, transparent 35%, rgba(6, 7, 10, 0.88) 100%);
+  background: radial-gradient(circle at center, transparent 35%, rgba(6, 7, 10, 0.9) 100%);
 }
 
 /* Floating Gesture Feedback HUDs */
@@ -5192,7 +5213,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  background: rgba(16, 14, 24, 0.9);
+  background: rgba(16, 14, 24, 0.92);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -5242,95 +5263,98 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   color: #ffffff;
 }
 
-/* Header & Controls */
-.ambient-mode__header {
+/* Discreet Top Three-Dots Button (Photo 2) */
+.ambient-mode__menu-container {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 2rem;
-  opacity: 0;
-  transform: translateY(-8px);
-  transition: opacity 280ms ease, transform 280ms ease;
-  pointer-events: none;
+  top: 1.5rem;
+  left: 1.75rem;
+  z-index: 50;
 }
 
-.ambient-mode__header--visible {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-.ambient-mode__header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.ambient-mode__icon-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-  width: 2.4rem;
-  height: 2.4rem;
-  border-radius: 50%;
+.ambient-mode__menu-trigger {
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 1.6rem;
+  line-height: 1;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: color 150ms ease, transform 120ms ease;
   display: grid;
   place-items: center;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 150ms ease, transform 120ms ease;
 }
 
-.ambient-mode__icon-btn:hover,
-.ambient-mode__icon-btn:active {
-  background: rgba(255, 255, 255, 0.2);
-  transform: scale(0.96);
+.ambient-mode__menu-trigger:hover,
+.ambient-mode__menu-trigger:active {
+  color: #ffffff;
+  transform: scale(1.1);
 }
 
-.ambient-mode__badge {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  padding: 0.3rem 0.8rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.85);
+.ambient-mode__dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.5rem;
+  background: rgba(18, 16, 26, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  padding: 0.4rem;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+  min-width: 14rem;
+  animation: mobileFadeIn 140ms ease;
+}
+
+.ambient-mode__dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 0.9rem;
   font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
 }
 
-/* Stage Layout (Landscape Dock Mode by default) */
+.ambient-mode__dropdown-item:hover,
+.ambient-mode__dropdown-item:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Pure 2-Column Landscape Stage (Photo 2) */
 .ambient-mode__stage {
   position: relative;
   z-index: 10;
   height: 100%;
+  width: 100%;
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) 1.4fr;
+  grid-template-columns: minmax(260px, 0.85fr) 1.5fr;
   align-items: center;
-  padding: 2rem 4rem;
+  padding: 2rem 4rem 2rem 5rem;
   gap: 4rem;
 }
 
 .ambient-mode__art-column {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
 }
 
 .ambient-mode__art-card {
   position: relative;
   width: 100%;
-  max-width: 320px;
+  max-width: 340px;
   aspect-ratio: 1;
-  border-radius: 22px;
+  border-radius: 24px;
   overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75), 0 0 45px var(--ambient-glow);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 50px var(--ambient-glow);
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -5347,30 +5371,6 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   background: linear-gradient(135deg, #1b192e 0%, #2b244d 100%);
 }
 
-.ambient-mode__track-meta {
-  margin-top: 1.5rem;
-  max-width: 340px;
-}
-
-.ambient-mode__title {
-  font-size: 1.45rem;
-  font-weight: 700;
-  margin: 0 0 0.35rem;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ambient-mode__artist {
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.65);
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Lyrics Column (Photo 2 typography) */
 .ambient-mode__lyrics-column {
   height: 100%;
@@ -5380,11 +5380,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 }
 
 .ambient-mode__lyrics-scroller {
-  height: 82vh;
+  height: 85vh;
   overflow-y: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
-  padding: 41vh 0;
+  padding: 42vh 0;
   width: 100%;
 }
 
@@ -5398,10 +5398,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 }
 
 .ambient-mode__line {
-  font-size: 1.35rem;
+  font-size: 1.45rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.32);
-  padding: 0.8rem 0;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 0.85rem 0;
   line-height: 1.35;
   cursor: pointer;
   transition: font-size 260ms cubic-bezier(0.16, 1, 0.3, 1), color 260ms ease, transform 260ms ease;
@@ -5409,11 +5409,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 }
 
 .ambient-mode__line:hover {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .ambient-mode__line--active {
-  font-size: 2.3rem;
+  font-size: 2.35rem;
   font-weight: 800;
   color: #ffffff;
   text-shadow: 0 0 32px var(--ambient-glow);
@@ -5421,8 +5421,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 }
 
 .ambient-mode__plain-lyrics pre {
-  font-size: 1.1rem;
-  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.15rem;
+  color: rgba(255, 255, 255, 0.85);
   white-space: pre-wrap;
   line-height: 1.7;
 }
@@ -5456,161 +5456,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   50% { transform: scale(1.2); opacity: 0.9; }
 }
 
-/* Footer & Transport Controls */
-.ambient-mode__footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 1.25rem 2rem 1.75rem;
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 280ms ease, transform 280ms ease;
-  pointer-events: none;
-}
-
-.ambient-mode__footer--visible {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-.ambient-mode__timeline {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: 100%;
-  max-width: 32rem;
-}
-
-.ambient-mode__time-text {
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.65);
-  font-variant-numeric: tabular-nums;
-}
-
-.ambient-mode__slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.25);
-  outline: none;
-  cursor: pointer;
-}
-
-.ambient-mode__slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #ffffff;
-  cursor: pointer;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
-}
-
-.ambient-mode__transport-pill {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  padding: 0.5rem 1.4rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-.ambient-mode__ctrl-btn {
-  background: transparent;
-  border: 0;
-  color: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
-  padding: 0.35rem;
-  display: grid;
-  place-items: center;
-  transition: transform 120ms ease, color 120ms ease;
-}
-
-.ambient-mode__ctrl-btn:hover,
-.ambient-mode__ctrl-btn:active {
-  color: #ffffff;
-  transform: scale(1.1);
-}
-
-.ambient-mode__play-btn {
-  background: #ffffff;
-  border: 0;
-  color: #06070a;
-  width: 2.8rem;
-  height: 2.8rem;
-  border-radius: 50%;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  transition: transform 120ms ease, background 120ms ease;
-  box-shadow: 0 4px 18px rgba(255, 255, 255, 0.35);
-}
-
-.ambient-mode__play-btn:hover,
-.ambient-mode__play-btn:active {
-  transform: scale(1.06);
-  background: #f0f0f0;
-}
-
-/* ─── Portrait Mobile Fallback ─────────────────────────────────────────── */
-@media (max-width: 768px) and (orientation: portrait) {
-  .ambient-mode__stage {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-    padding: 4.5rem 1.5rem 6.5rem;
-    gap: 1.5rem;
-  }
-
-  .ambient-mode__art-card {
-    max-width: 190px;
-    border-radius: 18px;
-  }
-
-  .ambient-mode__track-meta {
-    margin-top: 0.85rem;
-  }
-
-  .ambient-mode__title {
-    font-size: 1.2rem;
-  }
-
-  .ambient-mode__artist {
-    font-size: 0.88rem;
-  }
-
-  .ambient-mode__lyrics-scroller {
-    padding: 24vh 0;
-    text-align: center;
-  }
-
-  .ambient-mode__line {
-    font-size: 1.15rem;
-    transform-origin: center center;
-  }
-
-  .ambient-mode__line--active {
-    font-size: 1.75rem;
-  }
-}
-
 /* Reduced Motion Preference Guardrail */
 @media (prefers-reduced-motion: reduce) {
   .ambient-mode__line,
   .ambient-mode__line--active,
-  .ambient-mode__header,
-  .ambient-mode__footer,
   .ambient-mode__pulse-orb {
     animation: none !important;
     transition: none !important;

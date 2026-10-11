@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "@/stores/player-store";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import {
@@ -11,10 +11,6 @@ import {
   type SyncedLine,
 } from "@/lib/music/lyrics";
 import { extractThemePalette, DEFAULT_PALETTE, type ThemePalette } from "@/lib/utils/color-extractor";
-import { cleanTrackTitle, decodeHtmlEntities } from "@/lib/utils/html";
-import { TrackOptionsSheet } from "@/components/player/track-options-sheet";
-import { PlaylistPickerModal } from "@/components/ui/track-actions";
-import { type Track } from "@/types/music";
 
 export function AmbientModePlayer() {
   const isAmbientMode = usePlayerStore((s) => s.isAmbientMode);
@@ -25,7 +21,6 @@ export function AmbientModePlayer() {
   const duration = usePlayerStore((s) => s.duration);
   const volume = usePlayerStore((s) => s.volume);
   const setVolume = usePlayerStore((s) => s.setVolume);
-  const togglePlayPause = usePlayerStore((s) => s.togglePlayPause);
   const seek = usePlayerStore((s) => s.seek);
   const previous = usePlayerStore((s) => s.previous);
   const next = usePlayerStore((s) => s.next);
@@ -40,9 +35,8 @@ export function AmbientModePlayer() {
   const [lyricsData, setLyricsData] = useState<LyricsData | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
 
-  // Auto-hiding HUD controls
-  const [showControls, setShowControls] = useState(true);
-  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Menu state for the subtle top-left three dots button (⋮)
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Gesture Feedback HUDs
   const [volumeHud, setVolumeHud] = useState<{ visible: boolean; level: number } | null>(null);
@@ -50,16 +44,6 @@ export function AmbientModePlayer() {
 
   const [skipCue, setSkipCue] = useState<"prev" | "next" | null>(null);
   const skipCueTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Options Sheet & Modal
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const [playlistModalTrack, setPlaylistModalTrack] = useState<Track | null>(null);
-
-  // Fullscreen state
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // Timeline scrub
-  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
 
   // Refs for scrolling lyrics
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
@@ -142,47 +126,6 @@ export function AmbientModePlayer() {
     };
   }, [currentTrack, duration]);
 
-  // Auto-hide controls after 3.5s of inactivity
-  const resetControlsTimer = useCallback(() => {
-    setShowControls(true);
-    if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-    hideControlsTimerRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3500);
-  }, []);
-
-  useEffect(() => {
-    if (!isAmbientMode) return;
-    if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-    hideControlsTimerRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3500);
-    return () => {
-      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-    };
-  }, [isAmbientMode]);
-
-  // Handle Fullscreen state change
-  useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener("fullscreenchange", handleFsChange);
-    return () => document.removeEventListener("fullscreenchange", handleFsChange);
-  }, []);
-
-  const toggleFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-      } else {
-        await document.exitFullscreen();
-      }
-    } catch {
-      // Ignored if permissions disabled
-    }
-  };
-
   // Synced lyrics calculation
   const hasSyncedLyrics = Boolean(lyricsData?.syncedLyrics && lyricsData.syncedLyrics.length > 0);
   const canSync = hasSyncedLyrics && isSyncValid(lyricsData?.syncedLyrics ?? null, duration);
@@ -211,6 +154,21 @@ export function AmbientModePlayer() {
     userScrollTimeoutRef.current = setTimeout(() => {
       isUserScrollingRef.current = false;
     }, 2800);
+  };
+
+  const handleExitAmbientMode = async () => {
+    setMenuOpen(false);
+    setAmbientMode(false);
+    try {
+      if (typeof document !== "undefined" && document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => {});
+      }
+      if (typeof window !== "undefined" && window.screen.orientation && "unlock" in window.screen.orientation) {
+        (window.screen.orientation as unknown as { unlock: () => void }).unlock();
+      }
+    } catch {
+      // Ignored if unsupported
+    }
   };
 
   // ── Touch Gesture Dispatcher ──────────────────────────────────────────────
@@ -246,12 +204,12 @@ export function AmbientModePlayer() {
       }
     }
 
-    // 1. VERTICAL SLIDE: Real-time Volume Adjustment
+    // 1. VERTICAL SLIDE: Real-time Audio Volume Adjustment
     if (touchStateRef.current.direction === "vertical") {
       touchStateRef.current.isSwiping = true;
       const screenHeight = window.innerHeight || 400;
       // Dragging upwards (-deltaY) increases volume, downwards decreases
-      const volChange = -deltaY / (screenHeight * 0.7);
+      const volChange = -deltaY / (screenHeight * 0.65);
       const newVol = Math.max(0, Math.min(1, touchStateRef.current.startVolume + volChange));
       setVolume(newVol);
 
@@ -267,12 +225,10 @@ export function AmbientModePlayer() {
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    const { startX, startY, startTime, direction, isSwiping } = touchStateRef.current;
+    const { startX, startTime, direction, isSwiping } = touchStateRef.current;
     const touch = e.changedTouches[0];
     const deltaX = touch ? touch.clientX - startX : 0;
-    const deltaY = touch ? touch.clientY - startY : 0;
     const absX = Math.abs(deltaX);
-    const absY = Math.abs(deltaY);
     const elapsedTime = Date.now() - startTime;
 
     // Fade out Volume HUD after vertical drag completes
@@ -283,7 +239,7 @@ export function AmbientModePlayer() {
       }, 850);
     }
 
-    // HORIZONTAL SLIDE: Trigger song skip on release
+    // HORIZONTAL SLIDE: Trigger song skip on swipe release
     if (direction === "horizontal" && absX > 45) {
       if (deltaX < 0) {
         // Swipe Left: Next Song
@@ -298,13 +254,9 @@ export function AmbientModePlayer() {
       skipCueTimerRef.current = setTimeout(() => setSkipCue(null), 900);
     }
 
-    // SINGLE TAP (<12px displacement, <350ms duration): Toggle Controls
-    if (!isSwiping && absX < 12 && absY < 12 && elapsedTime < 350) {
-      if (showControls) {
-        setShowControls(false);
-      } else {
-        resetControlsTimer();
-      }
+    // Quick Tap: Close menu if open
+    if (!isSwiping && elapsedTime < 350) {
+      if (menuOpen) setMenuOpen(false);
     }
 
     touchStateRef.current.direction = null;
@@ -312,9 +264,6 @@ export function AmbientModePlayer() {
   };
 
   if (!isAmbientMode || !currentTrack) return null;
-
-  const displayTitle = cleanTrackTitle(currentTrack.title, currentTrack.artist);
-  const displayArtist = decodeHtmlEntities(currentTrack.artist);
 
   return (
     <div
@@ -375,14 +324,14 @@ export function AmbientModePlayer() {
           {skipCue === "next" ? (
             <>
               <span>Next Track</span>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 4 15 12 5 20 5 4" />
                 <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2.5" />
               </svg>
             </>
           ) : (
             <>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="19 20 9 12 19 4 19 20" />
                 <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2.5" />
               </svg>
@@ -392,52 +341,40 @@ export function AmbientModePlayer() {
         </div>
       )}
 
-      {/* ── Top Bar Controls (Auto-Hides) ── */}
-      <header className={`ambient-mode__header${showControls ? " ambient-mode__header--visible" : ""}`}>
+      {/* ── Discreet Three Dots Menu (Photo 2) ── */}
+      <div className="ambient-mode__menu-container">
         <button
           type="button"
-          className="ambient-mode__icon-btn"
-          onClick={() => setOptionsOpen(true)}
-          aria-label="Track options"
+          className="ambient-mode__menu-trigger"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(!menuOpen);
+          }}
+          aria-label="Options"
         >
-          •••
+          ⋮
         </button>
 
-        <div className="ambient-mode__header-info">
-          <span className="ambient-mode__badge">Ambient Mode</span>
-        </div>
-
-        <div className="ambient-mode__header-actions">
-          <button
-            type="button"
-            className="ambient-mode__icon-btn"
-            onClick={toggleFullscreen}
-            aria-label={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-          >
-            {isFullscreen ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+        {menuOpen && (
+          <div className="ambient-mode__dropdown" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="ambient-mode__dropdown-item"
+              onClick={handleExitAmbientMode}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
               </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-              </svg>
-            )}
-          </button>
-          <button
-            type="button"
-            className="ambient-mode__icon-btn ambient-mode__close-btn"
-            onClick={() => setAmbientMode(false)}
-            aria-label="Exit Ambient Mode"
-          >
-            ✕
-          </button>
-        </div>
-      </header>
+              <span>Back to normal mode</span>
+            </button>
+          </div>
+        )}
+      </div>
 
-      {/* ── Main Stage (2-Column Landscape dock matching reference photo) ── */}
+      {/* ── Pure 2-Column Landscape Stage (Photo 2) ── */}
       <main className="ambient-mode__stage">
-        {/* LEFT COLUMN: Album Cover Artwork & Elevation */}
+        {/* LEFT COLUMN: Prominent Square Album Artwork */}
         <section className="ambient-mode__art-column">
           <div className="ambient-mode__art-card">
             {currentTrack.artwork ? (
@@ -451,14 +388,9 @@ export function AmbientModePlayer() {
             )}
             <div className="ambient-mode__art-glow" />
           </div>
-
-          <div className="ambient-mode__track-meta">
-            <h1 className="ambient-mode__title">{displayTitle}</h1>
-            <p className="ambient-mode__artist">{displayArtist}</p>
-          </div>
         </section>
 
-        {/* RIGHT COLUMN: Synchronized Scrolling Lyrics (Photo 2) */}
+        {/* RIGHT COLUMN: Large Synchronized Typography Lyrics (Photo 2) */}
         <section className="ambient-mode__lyrics-column">
           <div
             ref={lyricsContainerRef}
@@ -469,7 +401,7 @@ export function AmbientModePlayer() {
             {lyricsLoading && (
               <div className="ambient-mode__lyrics-status">
                 <div className="ambient-mode__pulse-orb" />
-                <p>Loading verses…</p>
+                <p>Loading lyrics…</p>
               </div>
             )}
 
@@ -503,122 +435,12 @@ export function AmbientModePlayer() {
             {!lyricsLoading && !canSync && !lyricsData?.plainLyrics && (
               <div className="ambient-mode__no-lyrics">
                 <span className="ambient-mode__music-glyph">♫</span>
-                <p>Listening to {displayTitle}</p>
+                <p>{currentTrack.title}</p>
               </div>
             )}
           </div>
         </section>
       </main>
-
-      {/* ── Bottom Floating Controls (Auto-Hides after 3.5s) ── */}
-      <footer className={`ambient-mode__footer${showControls ? " ambient-mode__footer--visible" : ""}`}>
-        {/* Scrub Slider */}
-        <div className="ambient-mode__timeline">
-          <span className="ambient-mode__time-text">
-            {formatTime(scrubPosition !== null ? scrubPosition : position)}
-          </span>
-          <input
-            type="range"
-            min="0"
-            max={duration || 1}
-            value={scrubPosition !== null ? scrubPosition : Math.min(position, duration || 1)}
-            onChange={(e) => {
-              resetControlsTimer();
-              const val = Number(e.target.value);
-              setScrubPosition(val);
-              seek(val);
-            }}
-            onPointerUp={() => {
-              if (scrubPosition !== null) {
-                seek(scrubPosition);
-                setScrubPosition(null);
-              }
-            }}
-            className="ambient-mode__slider"
-            aria-label="Track progress"
-          />
-          <span className="ambient-mode__time-text">
-            {formatTime(duration)}
-          </span>
-        </div>
-
-        {/* Transport buttons pill */}
-        <div className="ambient-mode__transport-pill">
-          <button
-            type="button"
-            className="ambient-mode__ctrl-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              resetControlsTimer();
-              previous();
-            }}
-            aria-label="Previous track"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="11 19 2 12 11 5 11 19" />
-              <polygon points="22 19 13 12 22 5 22 19" />
-            </svg>
-          </button>
-
-          <button
-            type="button"
-            className="ambient-mode__play-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              resetControlsTimer();
-              void togglePlayPause();
-            }}
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" rx="1.5" />
-                <rect x="14" y="4" width="4" height="16" rx="1.5" />
-              </svg>
-            ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: "2px" }}>
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-            )}
-          </button>
-
-          <button
-            type="button"
-            className="ambient-mode__ctrl-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              resetControlsTimer();
-              next();
-            }}
-            aria-label="Next track"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="13 19 22 12 13 5 13 19" />
-              <polygon points="2 19 11 12 2 5 2 19" />
-            </svg>
-          </button>
-        </div>
-      </footer>
-
-      {/* Track Options Bottom Sheet */}
-      <TrackOptionsSheet
-        track={currentTrack}
-        isOpen={optionsOpen}
-        onClose={() => setOptionsOpen(false)}
-        onOpenPlaylistModal={() => setPlaylistModalTrack(currentTrack)}
-      />
-
-      {playlistModalTrack && (
-        <PlaylistPickerModal
-          track={playlistModalTrack}
-          onClose={() => setPlaylistModalTrack(null)}
-        />
-      )}
     </div>
   );
-}
-
-function formatTime(seconds: number) {
-  if (!seconds || isNaN(seconds)) return "0:00";
-  return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 }
