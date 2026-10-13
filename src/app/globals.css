@@ -5274,20 +5274,24 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .ambient-mode__menu-trigger {
   background: transparent;
   border: 0;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 1.6rem;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 1.75rem;
   line-height: 1;
-  padding: 0.5rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   cursor: pointer;
-  transition: color 150ms ease, transform 120ms ease;
+  transition: color 150ms ease, background 150ms ease, transform 120ms ease;
   display: grid;
   place-items: center;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .ambient-mode__menu-trigger:hover,
 .ambient-mode__menu-trigger:active {
   color: #ffffff;
-  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.08);
 }
 
 .ambient-mode__dropdown {
@@ -5302,7 +5306,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   border-radius: 16px;
   padding: 0.4rem;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
-  min-width: 14rem;
+  min-width: 14.5rem;
   animation: mobileFadeIn 140ms ease;
 }
 
@@ -5311,21 +5315,23 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.1rem;
+  min-height: 44px;
   background: transparent;
   border: 0;
   border-radius: 12px;
   color: #ffffff;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
   transition: background 120ms ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .ambient-mode__dropdown-item:hover,
 .ambient-mode__dropdown-item:active {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 /* Pure 2-Column Landscape Stage (Photo 2) */
@@ -5384,8 +5390,26 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   overflow-y: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
-  padding: 42vh 0;
+  padding: 38vh 0;
   width: 100%;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.7) 12%,
+    black 24%,
+    black 76%,
+    rgba(0, 0, 0, 0.7) 88%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.7) 12%,
+    black 24%,
+    black 76%,
+    rgba(0, 0, 0, 0.7) 88%,
+    transparent 100%
+  );
 }
 
 .ambient-mode__lyrics-scroller::-webkit-scrollbar {
@@ -5398,26 +5422,67 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 }
 
 .ambient-mode__line {
-  font-size: 1.45rem;
+  display: block;
+  font-size: clamp(0.95rem, 1.6vw, 1.15rem);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.35);
-  padding: 0.85rem 0;
-  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.3);
+  padding: 0.5rem 0;
+  line-height: 1.4;
   cursor: pointer;
   transition: font-size 260ms cubic-bezier(0.16, 1, 0.3, 1), color 260ms ease, transform 260ms ease;
   transform-origin: left center;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ambient-mode__line:hover {
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ambient-mode__line--past {
+  color: rgba(255, 255, 255, 0.42);
 }
 
 .ambient-mode__line--active {
-  font-size: 2.35rem;
+  font-size: clamp(1.35rem, 2.3vw, 1.75rem);
   font-weight: 800;
-  color: #ffffff;
-  text-shadow: 0 0 32px var(--ambient-glow);
-  transform: scale(1.04);
+  line-height: 1.4;
+  padding: 0.65rem 0;
+  letter-spacing: -0.015em;
+  transform: scale(1.02);
+}
+
+.ambient-mode__line-content {
+  display: inline-block;
+  max-width: 100%;
+  transition: color 240ms ease;
+}
+
+.ambient-mode__line--active .ambient-mode__line-content {
+  background: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #ffffff var(--line-progress, 0%),
+    rgba(255, 255, 255, 0.45) calc(var(--line-progress, 0%) + 10%),
+    rgba(255, 255, 255, 0.28) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 16px var(--ambient-glow));
+  animation: ambientKaraokeGlow 2.8s ease-in-out infinite alternate;
+}
+
+@keyframes ambientKaraokeGlow {
+  0% {
+    filter: drop-shadow(0 0 12px var(--ambient-glow)) drop-shadow(0 0 24px var(--ambient-dominant));
+  }
+  50% {
+    filter: drop-shadow(0 0 22px var(--ambient-glow)) drop-shadow(0 0 40px var(--ambient-dominant));
+  }
+  100% {
+    filter: drop-shadow(0 0 14px var(--ambient-glow)) drop-shadow(0 0 28px var(--ambient-dominant));
+  }
 }
 
 .ambient-mode__plain-lyrics pre {
@@ -5460,6 +5525,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 @media (prefers-reduced-motion: reduce) {
   .ambient-mode__line,
   .ambient-mode__line--active,
+  .ambient-mode__line-content,
   .ambient-mode__pulse-orb {
     animation: none !important;
     transition: none !important;
