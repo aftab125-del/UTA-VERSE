@@ -38,6 +38,21 @@ export function AmbientModePlayer() {
   // Menu state for the subtle top-left three dots button (⋮)
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Close menu when tapping/clicking outside
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleOutsidePointer = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && !target.closest(".ambient-mode__menu-container")) {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", handleOutsidePointer);
+    return () => {
+      window.removeEventListener("pointerdown", handleOutsidePointer);
+    };
+  }, [menuOpen]);
+
   // Gesture Feedback HUDs
   const [volumeHud, setVolumeHud] = useState<{ visible: boolean; level: number } | null>(null);
   const volumeHudTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -129,7 +144,8 @@ export function AmbientModePlayer() {
   // Synced lyrics calculation
   const hasSyncedLyrics = Boolean(lyricsData?.syncedLyrics && lyricsData.syncedLyrics.length > 0);
   const canSync = hasSyncedLyrics && isSyncValid(lyricsData?.syncedLyrics ?? null, duration);
-  const activeIndex = canSync && lyricsData?.syncedLyrics ? findCurrentLyricIndex(lyricsData.syncedLyrics, position) : -1;
+  const syncedLyrics = canSync && lyricsData?.syncedLyrics ? lyricsData.syncedLyrics : null;
+  const activeIndex = syncedLyrics ? findCurrentLyricIndex(syncedLyrics, position) : -1;
 
   // Auto-scroll active lyric line to vertical center
   useEffect(() => {
@@ -342,13 +358,23 @@ export function AmbientModePlayer() {
       )}
 
       {/* ── Discreet Three Dots Menu (Photo 2) ── */}
-      <div className="ambient-mode__menu-container">
+      <div
+        className="ambient-mode__menu-container"
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           className="ambient-mode__menu-trigger"
           onClick={(e) => {
             e.stopPropagation();
-            setMenuOpen(!menuOpen);
+            setMenuOpen((prev) => !prev);
+          }}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setMenuOpen((prev) => !prev);
           }}
           aria-label="Options"
         >
@@ -356,11 +382,25 @@ export function AmbientModePlayer() {
         </button>
 
         {menuOpen && (
-          <div className="ambient-mode__dropdown" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="ambient-mode__dropdown"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               className="ambient-mode__dropdown-item"
-              onClick={handleExitAmbientMode}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleExitAmbientMode();
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                void handleExitAmbientMode();
+              }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12" />
@@ -405,10 +445,22 @@ export function AmbientModePlayer() {
               </div>
             )}
 
-            {!lyricsLoading && canSync && lyricsData?.syncedLyrics && (
+            {!lyricsLoading && syncedLyrics && (
               <div className="ambient-mode__lyrics-lines">
-                {lyricsData.syncedLyrics.map((line: SyncedLine, index: number) => {
+                {syncedLyrics.map((line: SyncedLine, index: number) => {
                   const isActive = index === activeIndex;
+                  const isPast = index < activeIndex;
+
+                  let progressPct = 0;
+                  if (isActive) {
+                    const nextLine = syncedLyrics[index + 1];
+                    const lineStart = line.time;
+                    const lineEnd = nextLine ? nextLine.time : lineStart + 4;
+                    const lineDuration = Math.max(0.6, lineEnd - lineStart);
+                    const ratio = Math.min(1, Math.max(0, (position - lineStart) / lineDuration));
+                    progressPct = Math.round(ratio * 100);
+                  }
+
                   return (
                     <div
                       key={`amb-${line.time}-${index}`}
@@ -417,9 +469,24 @@ export function AmbientModePlayer() {
                         e.stopPropagation();
                         seek(line.time);
                       }}
-                      className={`ambient-mode__line${isActive ? " ambient-mode__line--active" : ""}`}
+                      className={`ambient-mode__line${
+                        isActive
+                          ? " ambient-mode__line--active"
+                          : isPast
+                          ? " ambient-mode__line--past"
+                          : ""
+                      }`}
                     >
-                      {line.text || "♪"}
+                      <span
+                        className="ambient-mode__line-content"
+                        style={
+                          isActive
+                            ? ({ "--line-progress": `${progressPct}%` } as React.CSSProperties)
+                            : undefined
+                        }
+                      >
+                        {line.text || "♪"}
+                      </span>
                     </div>
                   );
                 })}
