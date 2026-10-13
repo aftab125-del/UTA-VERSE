@@ -528,7 +528,14 @@ export function AmbientModePlayer() {
                       }
                     >
                       <span className="ambient-mode__line-content">
-                        {line.text || "♪"}
+                        <span className="ambient-mode__line-base">
+                          {line.text || "♪"}
+                        </span>
+                        {isActive && (
+                          <span className="ambient-mode__line-sung" aria-hidden="true">
+                            {line.text || "♪"}
+                          </span>
+                        )}
                       </span>
                     </div>
                   );
