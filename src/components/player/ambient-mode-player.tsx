@@ -164,6 +164,51 @@ export function AmbientModePlayer() {
     });
   }, [activeIndex, canSync]);
 
+  // High-precision hardware timestamp reference for 60fps/120fps liquid smooth karaoke flow
+  const baseTimeRef = useRef<{ position: number; timestamp: number }>({ position: 0, timestamp: 0 });
+
+  // Re-sync base time with the real audio clock whenever position updates from the engine
+  useEffect(() => {
+    baseTimeRef.current = {
+      position,
+      timestamp: performance.now(),
+    };
+  }, [position]);
+
+  // Buttery-smooth rAF animation loop directly updating --line-progress on activeLineRef DOM node
+  useEffect(() => {
+    if (!isAmbientMode || !isPlaying || !syncedLyrics || activeIndex < 0) return;
+
+    const activeLine = syncedLyrics[activeIndex];
+    if (!activeLine) return;
+
+    const nextLine = syncedLyrics[activeIndex + 1];
+    const lineStart = activeLine.time;
+    const lineEnd = nextLine ? nextLine.time : lineStart + 4;
+    const lineDuration = Math.max(0.4, lineEnd - lineStart);
+
+    let rafId: number;
+
+    const updateSmoothProgress = () => {
+      const now = performance.now();
+      const elapsedSec = Math.max(0, (now - baseTimeRef.current.timestamp) / 1000);
+      const estimatedPos = baseTimeRef.current.position + elapsedSec;
+      const ratio = Math.min(1, Math.max(0, (estimatedPos - lineStart) / lineDuration));
+      const progressPercent = ratio * 100;
+
+      if (activeLineRef.current) {
+        activeLineRef.current.style.setProperty("--line-progress", `${progressPercent.toFixed(2)}%`);
+      }
+
+      rafId = requestAnimationFrame(updateSmoothProgress);
+    };
+
+    rafId = requestAnimationFrame(updateSmoothProgress);
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, [isAmbientMode, isPlaying, syncedLyrics, activeIndex]);
+
   const handleUserScroll = () => {
     isUserScrollingRef.current = true;
     if (userScrollTimeoutRef.current) clearTimeout(userScrollTimeoutRef.current);
@@ -476,15 +521,13 @@ export function AmbientModePlayer() {
                           ? " ambient-mode__line--past"
                           : ""
                       }`}
+                      style={
+                        isActive
+                          ? ({ "--line-progress": `${progressPct}%` } as React.CSSProperties)
+                          : undefined
+                      }
                     >
-                      <span
-                        className="ambient-mode__line-content"
-                        style={
-                          isActive
-                            ? ({ "--line-progress": `${progressPct}%` } as React.CSSProperties)
-                            : undefined
-                        }
-                      >
+                      <span className="ambient-mode__line-content">
                         {line.text || "♪"}
                       </span>
                     </div>
