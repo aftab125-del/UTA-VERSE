@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { cleanTrackMetadata, parseLrc, type LyricsData, type LyricsResponse } from "@/lib/music/lyrics";
+import { fetchYouLyPlusLyrics } from "@/lib/music/providers/youlyplus";
+import { fetchKugouLyrics } from "@/lib/music/providers/kugou";
 
 export const runtime = "nodejs";
 
@@ -336,69 +338,219 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { item, method } = await queryLrclib(
-      trackName,
-      artistName,
-      isChannelArtist,
-      duration
-    );
+    let fallbackPlain: string | null = null;
+    let fallbackMethod: string | null = null;
+    let fallbackTrackName = trackName;
+    let fallbackArtistName = artistName;
 
-    if (!item || (!item.plainLyrics && !item.syncedLyrics && !item.instrumental)) {
-      console.log(
-        `[LyricsAPI] LRCLIB: No lyrics found for "${trackName}" by "${artistName}" after exhausting all 4 tiers.`
+    // ── Tier 1: LRCLIB (Primary open crowdsourced database) ─────────────
+    try {
+      const lrclibRes = await queryLrclib(
+        trackName,
+        artistName,
+        isChannelArtist,
+        duration
       );
-      const notFoundPayload: LyricsResponse = {
-        success: false,
-        notFound: true,
-        message: "No lyrics found for this track.",
+
+      if (lrclibRes.item?.syncedLyrics) {
+        const parsedSynced = parseLrc(lrclibRes.item.syncedLyrics);
+        if (parsedSynced && parsedSynced.length > 0) {
+          console.log(
+            `[LyricsAPI] LRCLIB: Hit (synced) via ${lrclibRes.method} for "${trackName}"`
+          );
+          const lyricsData: LyricsData = {
+            id: lrclibRes.item.id,
+            trackName: lrclibRes.item.trackName || lrclibRes.item.name || trackName,
+            artistName: lrclibRes.item.artistName || artistName,
+            albumName: lrclibRes.item.albumName,
+            duration: lrclibRes.item.duration,
+            instrumental: Boolean(lrclibRes.item.instrumental),
+            plainLyrics: lrclibRes.item.plainLyrics || null,
+            syncedLyrics: parsedSynced,
+            rawSyncedLyrics: lrclibRes.item.syncedLyrics,
+            source: "lrclib",
+          };
+
+          const successPayload: LyricsResponse = {
+            success: true,
+            lyrics: lyricsData,
+            method: lrclibRes.method,
+          };
+
+          pruneCacheIfNeeded();
+          serverCache.set(cacheKey, {
+            data: successPayload,
+            expiresAt: Date.now() + SUCCESS_TTL_MS,
+          });
+
+          return NextResponse.json(successPayload, {
+            status: 200,
+            headers: {
+              "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400",
+            },
+          });
+        }
+      }
+
+      if (lrclibRes.item?.plainLyrics) {
+        fallbackPlain = lrclibRes.item.plainLyrics;
+        fallbackMethod = lrclibRes.method;
+        fallbackTrackName = lrclibRes.item.trackName || lrclibRes.item.name || trackName;
+        fallbackArtistName = lrclibRes.item.artistName || artistName;
+      }
+    } catch (err) {
+      console.warn("[LyricsAPI] LRCLIB query encountered an error:", err);
+    }
+
+    // ── Tier 2: YouLy+ (LyricsPlus - Apple Music, Musixmatch, Spotify, QQ Music) ──
+    try {
+      const youlyRes = await fetchYouLyPlusLyrics(trackName, artistName, duration);
+      if (youlyRes?.syncedLyrics && youlyRes.syncedLyrics.length > 0) {
+        console.log(
+          `[LyricsAPI] YouLy+: Hit (synced) for "${trackName}" by "${artistName}"`
+        );
+        const lyricsData: LyricsData = {
+          trackName,
+          artistName,
+          duration,
+          instrumental: false,
+          plainLyrics: youlyRes.plainLyrics,
+          syncedLyrics: youlyRes.syncedLyrics,
+          rawSyncedLyrics: youlyRes.rawSyncedLyrics,
+          source: "youlyplus",
+        };
+
+        const successPayload: LyricsResponse = {
+          success: true,
+          lyrics: lyricsData,
+          method: "youlyplus (karaoke aggregator)",
+        };
+
+        pruneCacheIfNeeded();
+        serverCache.set(cacheKey, {
+          data: successPayload,
+          expiresAt: Date.now() + SUCCESS_TTL_MS,
+        });
+
+        return NextResponse.json(successPayload, {
+          status: 200,
+          headers: {
+            "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400",
+          },
+        });
+      }
+
+      if (youlyRes?.plainLyrics && !fallbackPlain) {
+        fallbackPlain = youlyRes.plainLyrics;
+        fallbackMethod = "youlyplus (plain)";
+      }
+    } catch (err) {
+      console.warn("[LyricsAPI] YouLy+ query encountered an error:", err);
+    }
+
+    // ── Tier 3: Kugou Music (酷狗音乐 - Massive Asian & Global LRC Archive) ─────
+    try {
+      const kugouRes = await fetchKugouLyrics(trackName, artistName, duration);
+      if (kugouRes?.syncedLyrics && kugouRes.syncedLyrics.length > 0) {
+        console.log(
+          `[LyricsAPI] Kugou: Hit (synced) for "${trackName}" by "${artistName}"`
+        );
+        const lyricsData: LyricsData = {
+          trackName,
+          artistName,
+          duration,
+          instrumental: false,
+          plainLyrics: kugouRes.plainLyrics,
+          syncedLyrics: kugouRes.syncedLyrics,
+          rawSyncedLyrics: kugouRes.rawSyncedLyrics,
+          source: "kugou",
+        };
+
+        const successPayload: LyricsResponse = {
+          success: true,
+          lyrics: lyricsData,
+          method: "kugou (lrc archive)",
+        };
+
+        pruneCacheIfNeeded();
+        serverCache.set(cacheKey, {
+          data: successPayload,
+          expiresAt: Date.now() + SUCCESS_TTL_MS,
+        });
+
+        return NextResponse.json(successPayload, {
+          status: 200,
+          headers: {
+            "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400",
+          },
+        });
+      }
+
+      if (kugouRes?.plainLyrics && !fallbackPlain) {
+        fallbackPlain = kugouRes.plainLyrics;
+        fallbackMethod = "kugou (plain)";
+      }
+    } catch (err) {
+      console.warn("[LyricsAPI] Kugou query encountered an error:", err);
+    }
+
+    // ── Final Fallback: Return plain lyrics if any provider found text ─────────
+    if (fallbackPlain) {
+      console.log(
+        `[LyricsAPI] Returning plain lyrics fallback via ${fallbackMethod} for "${trackName}"`
+      );
+      const lyricsData: LyricsData = {
+        trackName: fallbackTrackName,
+        artistName: fallbackArtistName,
+        duration,
+        instrumental: false,
+        plainLyrics: fallbackPlain,
+        syncedLyrics: null,
+        rawSyncedLyrics: null,
+        source: fallbackMethod?.includes("kugou")
+          ? "kugou"
+          : fallbackMethod?.includes("youly")
+          ? "youlyplus"
+          : "lrclib",
+      };
+
+      const successPayload: LyricsResponse = {
+        success: true,
+        lyrics: lyricsData,
+        method: `${fallbackMethod} (plain text fallback)`,
       };
 
       pruneCacheIfNeeded();
       serverCache.set(cacheKey, {
-        data: notFoundPayload,
-        expiresAt: Date.now() + NOT_FOUND_TTL_MS,
+        data: successPayload,
+        expiresAt: Date.now() + SUCCESS_TTL_MS,
       });
 
-      return NextResponse.json(notFoundPayload, { status: 404 });
+      return NextResponse.json(successPayload, {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400",
+        },
+      });
     }
 
+    // If completely exhausted with no lyrics found across all 3 providers
     console.log(
-      `[LyricsAPI] LRCLIB: Hit via ${method} for "${item.trackName || item.name || trackName}" by "${item.artistName || artistName}" (synced: ${Boolean(item.syncedLyrics)})`
+      `[LyricsAPI] Exhausted LRCLIB, YouLy+, and Kugou. No lyrics found for "${trackName}" by "${artistName}".`
     );
-
-    const parsedSynced = item.syncedLyrics ? parseLrc(item.syncedLyrics) : null;
-
-    const lyricsData: LyricsData = {
-      id: item.id,
-      trackName: item.trackName || item.name || trackName,
-      artistName: item.artistName || artistName,
-      albumName: item.albumName,
-      duration: item.duration,
-      instrumental: Boolean(item.instrumental),
-      plainLyrics: item.plainLyrics || null,
-      syncedLyrics: parsedSynced,
-      rawSyncedLyrics: item.syncedLyrics || null,
-      source: "lrclib",
-    };
-
-    const successPayload: LyricsResponse = {
-      success: true,
-      lyrics: lyricsData,
-      method,
+    const notFoundPayload: LyricsResponse = {
+      success: false,
+      notFound: true,
+      message: "No lyrics found across LRCLIB, YouLy+, or Kugou.",
     };
 
     pruneCacheIfNeeded();
     serverCache.set(cacheKey, {
-      data: successPayload,
-      expiresAt: Date.now() + SUCCESS_TTL_MS,
+      data: notFoundPayload,
+      expiresAt: Date.now() + NOT_FOUND_TTL_MS,
     });
 
-    return NextResponse.json(successPayload, {
-      status: 200,
-      headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400",
-      },
-    });
+    return NextResponse.json(notFoundPayload, { status: 404 });
   } catch (err) {
     console.error("[LyricsAPI] Error fetching lyrics:", err);
     return NextResponse.json(
