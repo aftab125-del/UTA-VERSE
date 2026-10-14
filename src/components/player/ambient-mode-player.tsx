@@ -12,6 +12,49 @@ import {
 } from "@/lib/music/lyrics";
 import { extractThemePalette, DEFAULT_PALETTE, type ThemePalette } from "@/lib/utils/color-extractor";
 
+/**
+ * Renders active lyric text segmented into word spans with proportional progress windows.
+ * Prevents multiple wrapped lines from flowing simultaneously and eliminates rectangular glow boxes.
+ */
+function renderActiveLineWords(text: string) {
+  const rawWords = text.trim().split(/\s+/).filter(Boolean);
+  if (rawWords.length === 0) {
+    return <span className="ambient-mode__line-base">{text || "♪"}</span>;
+  }
+
+  const totalChars = rawWords.reduce((sum, w) => sum + Math.max(1, w.length), 0);
+  let accumulatedChars = 0;
+
+  return (
+    <span className="ambient-mode__word-stream">
+      {rawWords.map((word, i) => {
+        const wordWeight = Math.max(1, word.length);
+        const wStart = (accumulatedChars / totalChars) * 100;
+        accumulatedChars += wordWeight;
+        const wEnd = (accumulatedChars / totalChars) * 100;
+
+        return (
+          <span
+            key={`w-${i}-${word}`}
+            className="ambient-mode__word"
+            style={
+              {
+                "--w-start": wStart.toFixed(2),
+                "--w-end": wEnd.toFixed(2),
+              } as React.CSSProperties
+            }
+          >
+            <span className="ambient-mode__word-base">{word}</span>
+            <span className="ambient-mode__word-sung" aria-hidden="true">
+              {word}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function AmbientModePlayer() {
   const isAmbientMode = usePlayerStore((s) => s.isAmbientMode);
   const setAmbientMode = usePlayerStore((s) => s.setAmbientMode);
@@ -187,6 +230,7 @@ export function AmbientModePlayer() {
     const lineEnd = nextLine ? nextLine.time : lineStart + 4;
     const lineDuration = Math.max(0.4, lineEnd - lineStart);
 
+    const lineEl = activeLineRef.current;
     let rafId: number;
 
     const updateSmoothProgress = () => {
@@ -196,8 +240,9 @@ export function AmbientModePlayer() {
       const ratio = Math.min(1, Math.max(0, (estimatedPos - lineStart) / lineDuration));
       const progressPercent = ratio * 100;
 
-      if (activeLineRef.current) {
-        activeLineRef.current.style.setProperty("--line-progress", `${progressPercent.toFixed(2)}%`);
+      if (lineEl) {
+        lineEl.style.setProperty("--line-progress", `${progressPercent.toFixed(2)}%`);
+        lineEl.style.setProperty("--line-prog", progressPercent.toFixed(2));
       }
 
       rafId = requestAnimationFrame(updateSmoothProgress);
@@ -206,6 +251,10 @@ export function AmbientModePlayer() {
     rafId = requestAnimationFrame(updateSmoothProgress);
     return () => {
       cancelAnimationFrame(rafId);
+      if (lineEl) {
+        lineEl.style.removeProperty("--line-progress");
+        lineEl.style.removeProperty("--line-prog");
+      }
     };
   }, [isAmbientMode, isPlaying, syncedLyrics, activeIndex]);
 
@@ -523,16 +572,18 @@ export function AmbientModePlayer() {
                       }`}
                       style={
                         isActive
-                          ? ({ "--line-progress": `${progressPct}%` } as React.CSSProperties)
+                          ? ({
+                              "--line-progress": `${progressPct}%`,
+                              "--line-prog": progressPct,
+                            } as React.CSSProperties)
                           : undefined
                       }
                     >
                       <span className="ambient-mode__line-content">
-                        <span className="ambient-mode__line-base">
-                          {line.text || "♪"}
-                        </span>
-                        {isActive && (
-                          <span className="ambient-mode__line-sung" aria-hidden="true">
+                        {isActive ? (
+                          renderActiveLineWords(line.text || "♪")
+                        ) : (
+                          <span className="ambient-mode__line-base">
                             {line.text || "♪"}
                           </span>
                         )}
