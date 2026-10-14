@@ -15,7 +15,7 @@ export interface LyricsData {
   plainLyrics: string | null;
   syncedLyrics: SyncedLine[] | null;
   rawSyncedLyrics: string | null;
-  source: "lrclib";
+  source: "lrclib" | "youlyplus" | "kugou";
 }
 
 export type LyricsResponse =
