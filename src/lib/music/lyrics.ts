@@ -268,7 +268,30 @@ export function parseLrc(lrcContent: string): SyncedLine[] {
   }
 
   result.sort((a, b) => a.time - b.time);
-  return result;
+
+  // Deduplicate and sanitize closely spaced lines
+  const sanitized: SyncedLine[] = [];
+  for (let i = 0; i < result.length; i++) {
+    const curr = result[i];
+    if (!curr.text) continue; // Skip empty lines
+
+    const prev = sanitized[sanitized.length - 1];
+    if (prev) {
+      // If exact duplicate timestamp and text, skip
+      if (Math.abs(prev.time - curr.time) < 0.05 && prev.text === curr.text) {
+        continue;
+      }
+      // If timestamps are identical or less than 0.25s apart, offset the current line slightly
+      if (curr.time <= prev.time) {
+        curr.time = Number((prev.time + 0.35).toFixed(2));
+      } else if (curr.time - prev.time < 0.25) {
+        curr.time = Number((prev.time + 0.35).toFixed(2));
+      }
+    }
+    sanitized.push(curr);
+  }
+
+  return sanitized;
 }
 
 /**

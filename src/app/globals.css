@@ -5423,11 +5423,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 
 .ambient-mode__line {
   display: block;
-  font-size: clamp(0.95rem, 1.6vw, 1.15rem);
+  font-size: clamp(1.2rem, 1.8vw, 1.4rem);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.3);
-  padding: 0.5rem 0;
-  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 0.75rem 0;
+  line-height: 1.45;
   cursor: pointer;
   transition: font-size 260ms cubic-bezier(0.16, 1, 0.3, 1), color 260ms ease, transform 260ms ease;
   transform-origin: left center;
@@ -5436,25 +5436,25 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 }
 
 .ambient-mode__line:hover {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .ambient-mode__line--past {
-  color: rgba(255, 255, 255, 0.42);
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .ambient-mode__line--active {
-  font-size: clamp(1.35rem, 2.3vw, 1.75rem);
+  font-size: clamp(2rem, 3.2vw, 2.45rem);
   font-weight: 800;
   line-height: 1.4;
-  padding: 0.65rem 0;
+  padding: 0.85rem 0;
   letter-spacing: -0.015em;
   transform: scale(1.02);
 }
 
 .ambient-mode__line-content {
   position: relative;
-  display: inline-block;
+  display: inline;
   max-width: 100%;
 }
 
@@ -5468,6 +5468,62 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   color: rgba(255, 255, 255, 0.35);
 }
 
+/* ── Word-by-Word Sequential Flow (Eliminates box clipping & dual-line flow) ── */
+.ambient-mode__word-stream {
+  display: inline;
+}
+
+.ambient-mode__word {
+  position: relative;
+  display: inline-block;
+  margin-right: 0.32em;
+}
+
+.ambient-mode__word:last-child {
+  margin-right: 0;
+}
+
+.ambient-mode__word-base {
+  display: inline;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 200ms ease;
+}
+
+.ambient-mode__word-sung {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  color: #ffffff;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: pre;
+  /* Soft, refined letter-contour luminescence (No blinding 46px blur or rectangle) */
+  text-shadow:
+    0 0 5px rgba(255, 255, 255, 0.4),
+    0 0 12px var(--ambient-glow);
+  --w-pct: clamp(
+    0%,
+    calc((var(--line-prog, 0) - var(--w-start, 0)) / max(0.01, (var(--w-end, 100) - var(--w-start, 0))) * 100%),
+    100%
+  );
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000000 0%,
+    #000000 var(--w-pct),
+    transparent calc(var(--w-pct) + 10%)
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000000 0%,
+    #000000 var(--w-pct),
+    transparent calc(var(--w-pct) + 10%)
+  );
+}
+
+/* Fallback for non-segmented lines */
 .ambient-mode__line-sung {
   position: absolute;
   top: 0;
@@ -5480,43 +5536,20 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   -webkit-user-select: none;
   white-space: pre-wrap;
   text-shadow:
-    0 0 8px rgba(255, 255, 255, 0.95),
-    0 0 20px rgba(255, 255, 255, 0.75),
-    0 0 38px var(--ambient-glow);
+    0 0 5px rgba(255, 255, 255, 0.4),
+    0 0 12px var(--ambient-glow);
   -webkit-mask-image: linear-gradient(
     90deg,
     #000000 0%,
     #000000 var(--line-progress, 0%),
-    transparent calc(var(--line-progress, 0%) + 4%)
+    transparent calc(var(--line-progress, 0%) + 8%)
   );
   mask-image: linear-gradient(
     90deg,
     #000000 0%,
     #000000 var(--line-progress, 0%),
-    transparent calc(var(--line-progress, 0%) + 4%)
+    transparent calc(var(--line-progress, 0%) + 8%)
   );
-  animation: ambientWhiteGlow 2.4s ease-in-out infinite alternate;
-}
-
-@keyframes ambientWhiteGlow {
-  0% {
-    text-shadow:
-      0 0 6px rgba(255, 255, 255, 0.85),
-      0 0 16px rgba(255, 255, 255, 0.6),
-      0 0 30px var(--ambient-glow);
-  }
-  50% {
-    text-shadow:
-      0 0 12px #ffffff,
-      0 0 26px rgba(255, 255, 255, 0.9),
-      0 0 46px var(--ambient-glow);
-  }
-  100% {
-    text-shadow:
-      0 0 7px rgba(255, 255, 255, 0.85),
-      0 0 18px rgba(255, 255, 255, 0.65),
-      0 0 32px var(--ambient-glow);
-  }
 }
 
 .ambient-mode__plain-lyrics pre {
@@ -5560,6 +5593,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .ambient-mode__line,
   .ambient-mode__line--active,
   .ambient-mode__line-content,
+  .ambient-mode__word-sung,
   .ambient-mode__line-sung,
   .ambient-mode__pulse-orb {
     animation: none !important;
