@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getInnerTubeTrending } from "@/lib/music/innertube";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
@@ -11,7 +11,7 @@ const SPAM_REGEX =
   /\b(mix|top\s*\d+|non\s*stop|nonstop|compilation|playlist|full\s*album|full\s*tracklist|mashup|megamix|\d+\s*hours?|best\s*songs|greatest\s*hits|jukebox|audio\s*jukebox|all\s*songs|collection)\b|[~〜]/i;
 
 export async function GET() {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
 
   // 1. Check Supabase trending_cache first
   try {
