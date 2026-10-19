@@ -5218,13 +5218,17 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   opacity: 0.45;
   transform: scale(1.25);
   transition: background-image 600ms ease;
+  animation: ambientImageDrift 36s ease-in-out infinite alternate;
+  will-change: transform;
 }
 
 .ambient-mode__backdrop-mesh {
   position: absolute;
-  inset: 0;
+  inset: -15%;
   background: var(--ambient-bg);
   opacity: 0.52;
+  animation: ambientMeshDrift 28s ease-in-out infinite alternate;
+  will-change: transform;
 }
 
 .ambient-mode__backdrop-vignette {
@@ -5232,6 +5236,34 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   inset: 0;
   background: radial-gradient(circle at center, transparent 35%, rgba(6, 7, 10, 0.9) 100%);
 }
+
+@keyframes ambientMeshDrift {
+  0% {
+    transform: scale(1.06) translate3d(0%, 0%, 0) rotate(0deg);
+  }
+  33% {
+    transform: scale(1.16) translate3d(2%, -1.5%, 0) rotate(1.8deg);
+  }
+  66% {
+    transform: scale(1.12) translate3d(-1.5%, 2%, 0) rotate(-1.4deg);
+  }
+  100% {
+    transform: scale(1.06) translate3d(0%, 0%, 0) rotate(0deg);
+  }
+}
+
+@keyframes ambientImageDrift {
+  0% {
+    transform: scale(1.25) translate3d(0%, 0%, 0);
+  }
+  50% {
+    transform: scale(1.35) translate3d(-1.5%, 1.2%, 0);
+  }
+  100% {
+    transform: scale(1.25) translate3d(0%, 0%, 0);
+  }
+}
+
 
 /* Floating Gesture Feedback HUDs */
 .ambient-hud {
@@ -5396,6 +5428,17 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   overflow: hidden;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 50px var(--ambient-glow);
   background: rgba(255, 255, 255, 0.05);
+  animation: ambientGlowPulse 6s ease-in-out infinite alternate;
+  will-change: box-shadow;
+}
+
+@keyframes ambientGlowPulse {
+  0% {
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 38px var(--ambient-glow);
+  }
+  100% {
+    box-shadow: 0 28px 72px rgba(0, 0, 0, 0.85), 0 0 68px var(--ambient-glow);
+  }
 }
 
 .ambient-mode__cover-img {
@@ -5630,6 +5673,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   text-align: center;
   margin-top: 1.15rem;
   max-width: 90vw;
+  width: 100%;
   gap: 0.35rem;
   animation: ambientFadeIn 350ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -5642,10 +5686,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   line-height: 1.25;
   margin: 0;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  max-width: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .ambient-mode__art-artist {
@@ -5654,10 +5698,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   color: rgba(255, 255, 255, 0.7);
   margin: 0;
   line-height: 1.2;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  max-width: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 @keyframes ambientFadeIn {
@@ -5669,6 +5713,73 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── Universal Marquee Text (Echo Music basicMarquee replica) ── */
+.marquee-container {
+  display: inline-flex;
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.marquee-container--overflowing {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+
+.marquee-track {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marqueeScroll var(--marquee-duration, 12s) linear infinite;
+  will-change: transform;
+}
+
+.marquee-content {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.marquee-separator {
+  opacity: 0.6;
+  padding: 0 0.5rem;
+  user-select: none;
+}
+
+.marquee-static {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+@keyframes marqueeScroll {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.marquee-container:hover .marquee-track {
+  animation-play-state: paused;
 }
 
 /* Mobile & Portrait Screen Constraints for Unsynced Lyrics in Ambient Mode */
@@ -5721,8 +5832,17 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .ambient-mode__line-content,
   .ambient-mode__word-sung,
   .ambient-mode__line-sung,
-  .ambient-mode__pulse-orb {
+  .ambient-mode__pulse-orb,
+  .ambient-mode__backdrop-mesh,
+  .ambient-mode__backdrop-image,
+  .ambient-mode__art-card,
+  .marquee-track {
     animation: none !important;
     transition: none !important;
+    transform: none !important;
+  }
+  .marquee-container--overflowing {
+    mask-image: none !important;
+    -webkit-mask-image: none !important;
   }
 }

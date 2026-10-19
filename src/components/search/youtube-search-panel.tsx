@@ -162,8 +162,10 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed.length < 2) {
-      setSuggestions([]);
-      return;
+      const resetTimer = setTimeout(() => {
+        setSuggestions([]);
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     const controller = new AbortController();
