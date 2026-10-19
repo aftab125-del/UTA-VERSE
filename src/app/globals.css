@@ -3308,6 +3308,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   .fullscreen-player__phase1-titles {
     min-width: 0;
     flex: 1;
+    overflow: hidden;
   }
 
   .fullscreen-player__phase1-title {
@@ -3316,10 +3317,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     font-weight: 800;
     color: #ffffff;
     line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     letter-spacing: -0.01em;
+    max-width: 100%;
+    width: 100%;
   }
 
   .fullscreen-player__phase1-artist {
@@ -3327,9 +3327,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
     font-size: 0.95rem;
     font-weight: 500;
     color: rgba(255, 255, 255, 0.65);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 100%;
+    width: 100%;
   }
 
   /* More Options Button & Dropdown */

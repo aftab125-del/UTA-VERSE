@@ -11,6 +11,7 @@ import {
 } from "@/lib/music/lyrics";
 import { extractThemePalette, DEFAULT_PALETTE, type ThemePalette } from "@/lib/utils/color-extractor";
 import { cleanTrackTitle, decodeHtmlEntities } from "@/lib/utils/html";
+import { MarqueeText } from "@/components/ui/marquee-text";
 import { LikeButton, AddToPlaylistButton, AddToQueueButton, PlaylistPickerModal } from "@/components/ui/track-actions";
 import { TrackOptionsSheet } from "@/components/player/track-options-sheet";
 import { type Track } from "@/types/music";
@@ -778,8 +779,16 @@ export function FullScreenPlayer() {
               {/* Track Info Row */}
               <div className="fullscreen-player__phase1-info-row">
                 <div className="fullscreen-player__phase1-titles">
-                  <h2 className="fullscreen-player__phase1-title">{cleanTrackTitle(currentTrack.title, currentTrack.artist)}</h2>
-                  <p className="fullscreen-player__phase1-artist">{decodeHtmlEntities(currentTrack.artist)}</p>
+                  <MarqueeText
+                    text={cleanTrackTitle(currentTrack.title, currentTrack.artist)}
+                    as="h2"
+                    className="fullscreen-player__phase1-title"
+                  />
+                  <MarqueeText
+                    text={decodeHtmlEntities(currentTrack.artist)}
+                    as="p"
+                    className="fullscreen-player__phase1-artist"
+                  />
                 </div>
 
                 {/* Circular More Options Button */}
