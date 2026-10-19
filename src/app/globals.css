@@ -5345,12 +5345,16 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   align-items: center;
   padding: 2rem 4rem 2rem 5rem;
   gap: 4rem;
+  transition: grid-template-columns 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              padding 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              gap 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ambient-mode__art-column {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ambient-mode__art-card {
@@ -5588,8 +5592,100 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
   50% { transform: scale(1.2); opacity: 0.9; }
 }
 
+/* Ambient Mode - Centered Metadata for unsynced mobile layout */
+.ambient-mode__art-info {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: 1.15rem;
+  max-width: 90vw;
+  gap: 0.35rem;
+  animation: ambientFadeIn 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ambient-mode__art-title {
+  font-size: clamp(1.15rem, 3.2vw, 1.5rem);
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 0;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ambient-mode__art-artist {
+  font-size: clamp(0.9rem, 2.2vw, 1.05rem);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@keyframes ambientFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile & Portrait Screen Constraints for Unsynced Lyrics in Ambient Mode */
+@media (max-width: 768px), (max-height: 520px), (orientation: portrait) {
+  .ambient-mode__plain-lyrics {
+    display: none !important;
+  }
+
+  .ambient-mode__stage--unsynced {
+    grid-template-columns: 1fr;
+    justify-content: center;
+    justify-items: center;
+    align-content: center;
+    text-align: center;
+    padding: 1.5rem 1rem;
+    gap: 0;
+  }
+
+  .ambient-mode__stage--unsynced .ambient-mode__lyrics-column {
+    display: none !important;
+  }
+
+  .ambient-mode__stage--unsynced .ambient-mode__art-column {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+  }
+
+  .ambient-mode__stage--unsynced .ambient-mode__art-card {
+    width: min(52vw, 48vh, 260px);
+    max-width: 260px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+
+  .ambient-mode__stage--unsynced .ambient-mode__art-info {
+    display: flex;
+  }
+}
+
 /* Reduced Motion Preference Guardrail */
 @media (prefers-reduced-motion: reduce) {
+  .ambient-mode__stage,
+  .ambient-mode__art-column,
+  .ambient-mode__art-info,
   .ambient-mode__line,
   .ambient-mode__line--active,
   .ambient-mode__line-content,

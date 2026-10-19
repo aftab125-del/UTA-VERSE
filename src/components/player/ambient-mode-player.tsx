@@ -189,6 +189,7 @@ export function AmbientModePlayer() {
   const canSync = hasSyncedLyrics && isSyncValid(lyricsData?.syncedLyrics ?? null, duration);
   const syncedLyrics = canSync && lyricsData?.syncedLyrics ? lyricsData.syncedLyrics : null;
   const activeIndex = syncedLyrics ? findCurrentLyricIndex(syncedLyrics, position) : -1;
+  const isUnsynced = !lyricsLoading && !canSync;
 
   // Auto-scroll active lyric line to vertical center
   useEffect(() => {
@@ -506,8 +507,8 @@ export function AmbientModePlayer() {
         )}
       </div>
 
-      {/* ── Pure 2-Column Landscape Stage (Photo 2) ── */}
-      <main className="ambient-mode__stage">
+      {/* ── Pure Landscape Stage (Photo 2 / Centered Hero when Unsynced) ── */}
+      <main className={`ambient-mode__stage${isUnsynced ? " ambient-mode__stage--unsynced" : ""}`}>
         {/* LEFT COLUMN: Prominent Square Album Artwork */}
         <section className="ambient-mode__art-column">
           <div className="ambient-mode__art-card">
@@ -521,6 +522,10 @@ export function AmbientModePlayer() {
               <div className="ambient-mode__art-placeholder" />
             )}
             <div className="ambient-mode__art-glow" />
+          </div>
+          <div className="ambient-mode__art-info">
+            <h2 className="ambient-mode__art-title">{currentTrack.title}</h2>
+            <p className="ambient-mode__art-artist">{currentTrack.artist}</p>
           </div>
         </section>
 
