@@ -11,6 +11,8 @@ import {
   type SyncedLine,
 } from "@/lib/music/lyrics";
 import { extractThemePalette, DEFAULT_PALETTE, type ThemePalette } from "@/lib/utils/color-extractor";
+import { MarqueeText } from "@/components/ui/marquee-text";
+import { cleanTrackTitle, decodeHtmlEntities } from "@/lib/utils/html";
 
 /**
  * Renders active lyric text segmented into word spans with proportional progress windows.
@@ -524,8 +526,16 @@ export function AmbientModePlayer() {
             <div className="ambient-mode__art-glow" />
           </div>
           <div className="ambient-mode__art-info">
-            <h2 className="ambient-mode__art-title">{currentTrack.title}</h2>
-            <p className="ambient-mode__art-artist">{currentTrack.artist}</p>
+            <MarqueeText
+              text={cleanTrackTitle(currentTrack.title, currentTrack.artist)}
+              as="h2"
+              className="ambient-mode__art-title"
+            />
+            <MarqueeText
+              text={decodeHtmlEntities(currentTrack.artist)}
+              as="p"
+              className="ambient-mode__art-artist"
+            />
           </div>
         </section>
 
@@ -608,7 +618,7 @@ export function AmbientModePlayer() {
             {!lyricsLoading && !canSync && !lyricsData?.plainLyrics && (
               <div className="ambient-mode__no-lyrics">
                 <span className="ambient-mode__music-glyph">♫</span>
-                <p>{currentTrack.title}</p>
+                <p>{cleanTrackTitle(currentTrack.title, currentTrack.artist)}</p>
               </div>
             )}
           </div>
