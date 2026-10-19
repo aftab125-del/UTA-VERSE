@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isOfficialStudioTrack, scoreTrackForStudioRanking } from "@/lib/music/lyrics";
+import { searchInnerTubeSongs } from "@/lib/music/innertube";
 import type { Json } from "@/types/database";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
@@ -51,12 +52,15 @@ function processSearchResults(items: unknown[]): SearchItem[] {
 export async function GET(request: Request) {
   const rawQuery = new URL(request.url).searchParams.get("q")?.trim() ?? "";
   if (!rawQuery || rawQuery.length > 200) {
-    return NextResponse.json({ error: "A non-empty search query of 200 characters or fewer is required." }, { status: 400 });
+    return NextResponse.json(
+      { error: "A non-empty search query of 200 characters or fewer is required." },
+      { status: 400 }
+    );
   }
 
   const normalizedQuery = rawQuery.toLowerCase();
 
-  // 1. Check Supabase search_cache first
+  // 1. Check Supabase search_cache first (24h TTL)
   try {
     const supabase = createSupabaseAdminClient();
     const { data, error } = await supabase
@@ -70,30 +74,29 @@ export async function GET(request: Request) {
       const hasResults = Array.isArray(data.results) && data.results.length > 0;
 
       if (ageMs < SEARCH_CACHE_TTL_MS && hasResults) {
-        console.info(`[YouTubeSearchProxy] [CACHE HIT] query="${normalizedQuery}" age=${Math.round(ageMs / 1000)}s count=${(data.results as unknown[]).length}`);
+        console.info(
+          `[YouTubeSearchProxy] [CACHE HIT] query="${normalizedQuery}" age=${Math.round(ageMs / 1000)}s count=${
+            (data.results as unknown[]).length
+          }`
+        );
         const processed = processSearchResults(data.results as unknown[]);
         return NextResponse.json(processed);
       }
     }
   } catch (cacheErr) {
-    console.warn("[YouTubeSearchProxy] Supabase search cache read skipped:", cacheErr instanceof Error ? cacheErr.message : cacheErr);
+    console.warn(
+      "[YouTubeSearchProxy] Supabase search cache read skipped:",
+      cacheErr instanceof Error ? cacheErr.message : cacheErr
+    );
   }
 
-  // 2. Cache miss: Query upstream backend
-  if (!NEBULA_MUSIC_SERVER_URL) {
-    console.error("[YouTubeSearchProxy] NEBULA_MUSIC_SERVER_URL is not configured.");
-    return NextResponse.json({ error: "YouTube search is not configured." }, { status: 500 });
-  }
-
+  // 2. Cache miss: Query YouTube Music InnerTube (Quota-free native engine)
   try {
-    const upstreamUrl = `${NEBULA_MUSIC_SERVER_URL}/search?q=${encodeURIComponent(rawQuery)}`;
-    const response = await fetch(upstreamUrl, { cache: "no-store" });
-    const payload = await response.json().catch(() => ({ error: "Invalid search response." }));
+    console.info(`[YouTubeSearchProxy] Fetching from InnerTube for query="${rawQuery}"`);
+    const innerTubeResults = await searchInnerTubeSongs(rawQuery);
 
-    console.info("[YouTubeSearchProxy] Backend response", { status: response.status, query: rawQuery });
-
-    if (response.ok && Array.isArray(payload) && payload.length > 0) {
-      const processed = processSearchResults(payload);
+    if (Array.isArray(innerTubeResults) && innerTubeResults.length > 0) {
+      const processed = processSearchResults(innerTubeResults);
 
       // 3. Cache valid results in Supabase asynchronously
       try {
@@ -111,7 +114,9 @@ export async function GET(request: Request) {
             )
         )
           .then(() => {
-            console.info(`[YouTubeSearchProxy] Cached ${processed.length} ranked search results for "${normalizedQuery}"`);
+            console.info(
+              `[YouTubeSearchProxy] Cached ${processed.length} ranked InnerTube results for "${normalizedQuery}"`
+            );
           })
           .catch((upsertErr) => {
             console.warn("[YouTubeSearchProxy] Failed to write search cache:", upsertErr);
@@ -122,13 +127,30 @@ export async function GET(request: Request) {
 
       return NextResponse.json(processed);
     }
-
-    return NextResponse.json(payload, { status: response.status });
-  } catch (error) {
-    console.error("[YouTubeSearchProxy] Backend request failed", {
-      query: rawQuery,
-      message: error instanceof Error ? error.message : "Unknown search error",
-    });
-    return NextResponse.json({ error: "Unable to reach YouTube search." }, { status: 502 });
+  } catch (innerTubeError) {
+    console.warn("[YouTubeSearchProxy] InnerTube search attempt failed, trying upstream fallback:", innerTubeError);
   }
+
+  // 4. Secondary Fallback: Query upstream backend if configured
+  if (NEBULA_MUSIC_SERVER_URL) {
+    try {
+      const upstreamUrl = `${NEBULA_MUSIC_SERVER_URL}/search?q=${encodeURIComponent(rawQuery)}`;
+      const response = await fetch(upstreamUrl, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({ error: "Invalid search response." }));
+
+      console.info("[YouTubeSearchProxy] Upstream backend fallback response", {
+        status: response.status,
+        query: rawQuery,
+      });
+
+      if (response.ok && Array.isArray(payload) && payload.length > 0) {
+        const processed = processSearchResults(payload);
+        return NextResponse.json(processed);
+      }
+    } catch (fallbackError) {
+      console.error("[YouTubeSearchProxy] Upstream backend fallback failed:", fallbackError);
+    }
+  }
+
+  return NextResponse.json([], { status: 200 });
 }

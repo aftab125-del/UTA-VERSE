@@ -486,6 +486,36 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .youtube-search { margin-top: 3rem; }
 .youtube-search__input { width: 100%; padding: 0.9rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); outline: 0; background: var(--color-surface); color: var(--color-ink); }
 .youtube-search__input:focus { border-color: var(--color-accent-bright); box-shadow: 0 0 0 3px rgba(169, 139, 255, 0.14); }
+.youtube-search__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+  margin-bottom: 0.4rem;
+}
+.youtube-search__suggestion-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.35rem 0.8rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 100ms ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.youtube-search__suggestion-pill:hover,
+.youtube-search__suggestion-pill:focus-visible {
+  background: rgba(169, 139, 255, 0.2);
+  border-color: rgba(169, 139, 255, 0.45);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
 .youtube-search__status { color: var(--color-muted); text-align: center; margin-top: 1rem; }
 .youtube-search__status--error { color: #ff9caa; text-align: center; }
 .youtube-search__results { display: grid; gap: 0.75rem; margin-top: 1rem; }
