@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { searchInnerTubeSongs } from "@/lib/music/innertube";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
 const AUDIO_BUCKET = process.env.AUDIO_CACHE_BUCKET || "audio-cache";
@@ -297,14 +298,31 @@ export async function POST(request: Request) {
     let candidates: SearchCandidate[] = [];
     let lastFailure: { status: number; reason: string | null; message: string | null } | null = null;
 
-    if (!requestedVideoId && apiKey) {
+    if (!requestedVideoId) {
+      // 1. Primary: Use InnerTube (Zero quota, instant YouTube Music match)
+      try {
+        const query = `${safeTitle} ${safeArtist}`;
+        console.info("[PlaybackResolver] Querying InnerTube candidate resolver", { query });
+        const innerTubeSongs = await searchInnerTubeSongs(query);
+        if (Array.isArray(innerTubeSongs) && innerTubeSongs.length > 0) {
+          candidates = innerTubeSongs.map((item) => ({
+            id: { videoId: item.videoId },
+            snippet: { title: item.title, channelTitle: item.channelTitle },
+          }));
+        }
+      } catch (innerTubeErr) {
+        console.warn("[PlaybackResolver] InnerTube candidate search failed:", innerTubeErr);
+      }
+    }
+
+    if (!requestedVideoId && candidates.length === 0 && apiKey) {
       for (const searchQuery of queries) {
         const requestUrl = `${YOUTUBE_SEARCH_ENDPOINT}?part=snippet&type=video&videoCategoryId=10&maxResults=5&q=${encodeURIComponent(searchQuery)}&key=[redacted]`;
-        console.info("[PlaybackResolver] YouTube search request", { requestUrl, searchQuery });
+        console.info("[PlaybackResolver] YouTube search request fallback", { requestUrl, searchQuery });
         const { response, data } = await searchYouTube(searchQuery, apiKey);
         const reason = data.error?.errors?.[0]?.reason ?? data.error?.status ?? null;
         const message = data.error?.message ?? null;
-        console.info("[PlaybackResolver] YouTube search response", {
+        console.info("[PlaybackResolver] YouTube search fallback response", {
           status: response.status,
           searchQuery,
           items: data.items?.length ?? 0,

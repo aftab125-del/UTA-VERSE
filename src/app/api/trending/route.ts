@@ -1,14 +1,83 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getInnerTubeTrending } from "@/lib/music/innertube";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
+const TRENDING_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 export const runtime = "nodejs";
 
-const SPAM_REGEX = /\b(mix|top\s*\d+|non\s*stop|nonstop|compilation|playlist|full\s*album|full\s*tracklist|mashup|megamix|\d+\s*hours?|best\s*songs|greatest\s*hits|jukebox|audio\s*jukebox|all\s*songs|collection)\b|[~〜]/i;
+const SPAM_REGEX =
+  /\b(mix|top\s*\d+|non\s*stop|nonstop|compilation|playlist|full\s*album|full\s*tracklist|mashup|megamix|\d+\s*hours?|best\s*songs|greatest\s*hits|jukebox|audio\s*jukebox|all\s*songs|collection)\b|[~〜]/i;
 
 export async function GET() {
-  // 1. Try backend server GET /trending
+  const supabase = await createSupabaseServerClient();
+
+  // 1. Check Supabase trending_cache first
+  try {
+    const { data } = await supabase
+      .from("trending_cache")
+      .select("results, fetched_at")
+      .order("fetched_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (data?.results && Array.isArray(data.results) && data.results.length > 0) {
+      const ageMs = Date.now() - new Date(data.fetched_at).getTime();
+      if (ageMs < TRENDING_CACHE_TTL_MS) {
+        const rawList = data.results as Array<{
+          videoId?: string;
+          title?: string;
+          channelTitle?: string;
+          thumbnail?: string;
+        }>;
+        const filtered = rawList.filter((t) => t && t.title && !SPAM_REGEX.test(t.title));
+        if (filtered.length > 0) {
+          console.info(`[TrendingAPI] [CACHE HIT] Returning ${filtered.length} trending tracks (age=${Math.round(ageMs / 1000)}s)`);
+          return NextResponse.json(filtered);
+        }
+      }
+    }
+  } catch (supabaseError) {
+    console.warn("[TrendingAPI] Supabase cache read skipped:", supabaseError);
+  }
+
+  // 2. Fetch fresh real-time trending tracks from YouTube Music InnerTube
+  try {
+    console.info("[TrendingAPI] Fetching real-time trending from YouTube Music InnerTube");
+    const trending = await getInnerTubeTrending();
+    const cleanList = trending
+      .filter((t) => t && t.title && !SPAM_REGEX.test(t.title))
+      .map((t) => ({
+        videoId: t.videoId,
+        title: t.title,
+        channelTitle: t.channelTitle,
+        thumbnail: t.thumbnail,
+      }));
+
+    if (cleanList.length > 0) {
+      // Asynchronously update Supabase trending_cache
+      try {
+        void Promise.resolve(
+          supabase.from("trending_cache").insert({
+            query: "trending",
+            results: cleanList,
+            fetched_at: new Date().toISOString(),
+          })
+        ).catch((err) => {
+          console.warn("[TrendingAPI] Failed to update trending cache:", err);
+        });
+      } catch (cacheWriteErr) {
+        console.warn("[TrendingAPI] Supabase write error:", cacheWriteErr);
+      }
+
+      return NextResponse.json(cleanList);
+    }
+  } catch (innerTubeError) {
+    console.warn("[TrendingAPI] InnerTube trending failed, falling back to upstream/cache:", innerTubeError);
+  }
+
+  // 3. Fallback: Try upstream backend server GET /trending if configured
   if (NEBULA_MUSIC_SERVER_URL) {
     try {
       const upstreamUrl = `${NEBULA_MUSIC_SERVER_URL}/trending`;
@@ -20,13 +89,12 @@ export async function GET() {
         }
       }
     } catch (backendError) {
-      console.warn("[TrendingProxy] Backend /trending call failed, attempting fallback:", backendError);
+      console.warn("[TrendingAPI] Upstream backend /trending call failed:", backendError);
     }
   }
 
-  // 2. Fallback: Query Supabase trending_cache directly
+  // 4. Stale Cache Fallback: Return any available trending cache even if older than TTL
   try {
-    const supabase = await createSupabaseServerClient();
     const { data } = await supabase
       .from("trending_cache")
       .select("results")
@@ -35,53 +103,20 @@ export async function GET() {
       .maybeSingle();
 
     if (data?.results && Array.isArray(data.results) && data.results.length > 0) {
-      const rawList = data.results as Array<{ videoId?: string; title?: string; channelTitle?: string; thumbnail?: string }>;
+      const rawList = data.results as Array<{
+        videoId?: string;
+        title?: string;
+        channelTitle?: string;
+        thumbnail?: string;
+      }>;
       const filtered = rawList.filter((t) => t && t.title && !SPAM_REGEX.test(t.title));
       if (filtered.length > 0) {
         return NextResponse.json(filtered);
       }
     }
-  } catch (supabaseError) {
-    console.warn("[TrendingProxy] Supabase cache read failed:", supabaseError);
-  }
-
-  // 3. Fallback: Use backend /search to fetch popular singles
-  if (NEBULA_MUSIC_SERVER_URL) {
-    try {
-      const searchQueries = [
-        "The Weeknd official music video",
-        "Billie Eilish official music video",
-        "Dua Lipa official music video",
-        "Taylor Swift official music video",
-      ];
-      const results = await Promise.allSettled(
-        searchQueries.map(async (q) => {
-          const res = await fetch(`${NEBULA_MUSIC_SERVER_URL}/search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
-          return res.ok ? res.json() : [];
-        })
-      );
-      const combined: Array<{ videoId: string; title: string; channelTitle: string; thumbnail: string }> = [];
-      const seen = new Set<string>();
-
-      for (const r of results) {
-        if (r.status === "fulfilled" && Array.isArray(r.value)) {
-          for (const item of r.value) {
-            if (item.videoId && item.title && !seen.has(item.videoId) && !SPAM_REGEX.test(item.title)) {
-              seen.add(item.videoId);
-              combined.push(item);
-            }
-          }
-        }
-      }
-
-      if (combined.length > 0) {
-        return NextResponse.json(combined.slice(0, 30));
-      }
-    } catch (searchError) {
-      console.error("[TrendingProxy] Search fallback failed:", searchError);
-    }
+  } catch {
+    // ignore
   }
 
   return NextResponse.json([], { status: 200 });
 }
-

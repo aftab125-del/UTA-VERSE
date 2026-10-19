@@ -155,7 +155,39 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const setTrack = usePlayerStore((state) => state.setTrack);
+
+  // Fetch live autocomplete suggestions from InnerTube
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search/suggestions?q=${encodeURIComponent(trimmed)}`, {
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = (await res.json().catch(() => null)) as { suggestions?: string[] } | null;
+          if (Array.isArray(data?.suggestions)) {
+            setSuggestions(data.suggestions);
+          }
+        }
+      } catch {
+        // ignore abort
+      }
+    }, 180);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [query]);
 
   useEffect(() => {
     const normalizedQuery = query.trim();
@@ -274,6 +306,27 @@ export function YouTubeSearchPanel({ initialQuery = "" }: YouTubeSearchPanelProp
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Any song, artist, or phrase…"
       />
+      {suggestions.length > 0 && (
+        <div className="youtube-search__suggestions" role="list" aria-label="Search suggestions">
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              className="youtube-search__suggestion-pill"
+              onClick={() => {
+                setQuery(suggestion);
+                setSuggestions([]);
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>{suggestion}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {isLoading && <p className="youtube-search__status">Searching UTA-VERSE…</p>}
       {error && <p className="youtube-search__status youtube-search__status--error">{error}</p>}
       {showEmptyState && <p className="youtube-search__status">No UTA search results found.</p>}
