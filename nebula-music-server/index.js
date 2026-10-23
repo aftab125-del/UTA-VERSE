@@ -84,86 +84,14 @@ app.get('/', (req, res) => {
 // -----------------------------------------------------------------------------
 
 async function getSupabaseAudioUrl(videoId) {
-  if (!supabase) {
-    return null;
-  }
-
-  const fileName = `${videoId}.m4a`;
-
-  try {
-    const { data, error } = await supabase.storage
-      .from('audio-cache')
-      .list('', {
-        search: fileName,
-        limit: 10,
-      });
-
-    if (error) {
-      console.warn(
-        `[Supabase Storage] List error for ${fileName}:`,
-        error.message
-      );
-
-      return null;
-    }
-
-    const exists =
-      Array.isArray(data) &&
-      data.some((file) => file.name === fileName);
-
-    if (!exists) {
-      return null;
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('audio-cache')
-      .getPublicUrl(fileName);
-
-    return publicUrlData?.publicUrl || null;
-  } catch (error) {
-    console.warn(
-      `[Supabase Storage] Check failed for ${videoId}:`,
-      error.message
-    );
-
-    return null;
-  }
+  // Cloud storage caching disabled to eliminate storage quota limits and bypass restrictions.
+  return null;
 }
 
 async function uploadToSupabaseStorage(videoId, localFilePath) {
-  if (!supabase) {
-    return null;
-  }
-
-  const fileName = `${videoId}.m4a`;
-
-  console.log(
-    `[Supabase Storage] Uploading ${fileName}...`
-  );
-
-  const fileBuffer = fs.readFileSync(localFilePath);
-
-  const { error } = await supabase.storage
-    .from('audio-cache')
-    .upload(fileName, fileBuffer, {
-      contentType: 'audio/mp4',
-      upsert: true,
-    });
-
-  if (error) {
-    console.error(
-      `[Supabase Storage] Upload failed:`,
-      error.message
-    );
-
-    throw error;
-  }
-
-  const { data: publicUrlData } = supabase.storage
-    .from('audio-cache')
-    .getPublicUrl(fileName);
-
-  return publicUrlData?.publicUrl || null;
+  // Permanently disabled: Echo Music 0-Cloud-Storage direct CDN streaming model.
+  // Audio streams are delivered directly via unthrottled CDN URLs, maintaining 0 MB cloud storage usage.
+  return null;
 }
 
 // -----------------------------------------------------------------------------
