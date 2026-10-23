@@ -6,6 +6,7 @@ import type { Json } from "@/types/database";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
 const SEARCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const inMemorySearchCache = new Map<string, { results: SearchItem[]; expiresAt: number }>();
 
 export const runtime = "nodejs";
 
@@ -60,6 +61,11 @@ export async function GET(request: Request) {
 
   const normalizedQuery = rawQuery.toLowerCase();
 
+  const cachedInMem = inMemorySearchCache.get(normalizedQuery);
+  if (cachedInMem && Date.now() < cachedInMem.expiresAt) {
+    return NextResponse.json(cachedInMem.results);
+  }
+
   // 1. Check Supabase search_cache first (24h TTL)
   try {
     const supabase = createSupabaseAdminClient();
@@ -97,6 +103,7 @@ export async function GET(request: Request) {
 
     if (Array.isArray(innerTubeResults) && innerTubeResults.length > 0) {
       const processed = processSearchResults(innerTubeResults);
+      inMemorySearchCache.set(normalizedQuery, { results: processed, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
 
       // 3. Cache valid results in Supabase asynchronously
       try {

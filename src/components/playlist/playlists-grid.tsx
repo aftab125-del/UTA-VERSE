@@ -6,7 +6,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { CreatePlaylistModal } from "@/components/ui/create-playlist-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { getUserPlaylists } from "@/lib/music/playlists";
+import { getUserPlaylists, deletePlaylist } from "@/lib/music/playlists";
 import type { Playlist } from "@/types/music";
 
 interface PlaylistsGridProps {
@@ -66,11 +66,10 @@ export function PlaylistsGrid({ userId, initialPlaylists = [] }: PlaylistsGridPr
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    const { error } = await supabase.from("playlists").delete().eq("id", deleteTarget.id);
-    if (error) {
-      console.error("[PlaylistsGrid] Failed to delete playlist", { playlistId: deleteTarget.id, error: error.message });
-      setDeleting(false);
-      return;
+    try {
+      await deletePlaylist(deleteTarget.id, supabase);
+    } catch (err) {
+      console.warn("[PlaylistsGrid] Delete error:", err);
     }
     setPlaylists((prev) => prev.filter((p) => p.id !== deleteTarget.id));
     setDeleteTarget(null);

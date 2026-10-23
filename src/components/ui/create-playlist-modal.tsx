@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useUser } from "@/hooks/use-user";
+import { createPlaylist, updatePlaylist } from "@/lib/music/playlists";
 
 interface CreatePlaylistModalProps {
   open: boolean;
@@ -14,13 +14,19 @@ interface CreatePlaylistModalProps {
   initialDescription?: string;
 }
 
-export function CreatePlaylistModal({ open, onClose, onCreated, initialName, playlistId, initialDescription }: CreatePlaylistModalProps) {
+export function CreatePlaylistModal({
+  open,
+  onClose,
+  onCreated,
+  initialName,
+  playlistId,
+  initialDescription,
+}: CreatePlaylistModalProps) {
   const { user } = useUser();
   const [name, setName] = useState(initialName ?? "");
   const [description, setDescription] = useState(initialDescription ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createSupabaseBrowserClient();
 
   useEffect(() => {
     if (!open) return;
@@ -35,26 +41,22 @@ export function CreatePlaylistModal({ open, onClose, onCreated, initialName, pla
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!user || !name.trim()) return;
+    if (!name.trim()) return;
     setLoading(true);
     setError(null);
 
+    const effectiveUserId = user?.id ?? "local-user";
+
     try {
       if (playlistId) {
-        const { error: updateError } = await supabase
-          .from("playlists")
-          .update({ name: name.trim(), description: description.trim() || null })
-          .eq("id", playlistId);
-        if (updateError) throw updateError;
-        onCreated({ id: playlistId, name: name.trim() });
+        const updated = await updatePlaylist(playlistId, {
+          name: name.trim(),
+          description: description.trim() || null,
+        });
+        onCreated({ id: updated.id, name: updated.name });
       } else {
-        const { data, error: insertError } = await supabase
-          .from("playlists")
-          .insert({ user_id: user.id, name: name.trim(), description: description.trim() || null })
-          .select("id, name")
-          .single();
-        if (insertError) throw insertError;
-        onCreated(data);
+        const created = await createPlaylist(effectiveUserId, name.trim(), description.trim() || undefined);
+        onCreated({ id: created.id, name: created.name });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -64,11 +66,18 @@ export function CreatePlaylistModal({ open, onClose, onCreated, initialName, pla
   }
 
   return createPortal(
-    <div className="modal-overlay" role="dialog" aria-label={playlistId ? "Edit playlist" : "Create playlist"} onClick={onClose}>
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-label={playlistId ? "Edit playlist" : "Create playlist"}
+      onClick={onClose}
+    >
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card__header">
           <h3>{playlistId ? "Edit playlist" : "Create playlist"}</h3>
-          <button type="button" className="modal-card__close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-card__close" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
         </div>
         <form className="modal-card__body" onSubmit={(e) => void handleSubmit(e)}>
           {error && <div className="auth-error">{error}</div>}

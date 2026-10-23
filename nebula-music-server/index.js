@@ -167,6 +167,31 @@ async function uploadToSupabaseStorage(videoId, localFilePath) {
 }
 
 // -----------------------------------------------------------------------------
+// In-Memory Stream Cache (Echo Music Direct Stream Architecture: 0 Cloud Storage)
+// -----------------------------------------------------------------------------
+
+const inMemoryStreamCache = new Map();
+const STREAM_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function getCachedStreamUrl(videoId) {
+  const cached = inMemoryStreamCache.get(videoId);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    inMemoryStreamCache.delete(videoId);
+    return null;
+  }
+  return cached.url;
+}
+
+function setCachedStreamUrl(videoId, url) {
+  if (inMemoryStreamCache.size > 500) {
+    const firstKey = inMemoryStreamCache.keys().next().value;
+    if (firstKey) inMemoryStreamCache.delete(firstKey);
+  }
+  inMemoryStreamCache.set(videoId, { url, expiresAt: Date.now() + STREAM_CACHE_TTL_MS });
+}
+
+// -----------------------------------------------------------------------------
 // yt-dlp
 // -----------------------------------------------------------------------------
 
@@ -307,9 +332,7 @@ function processAndCacheAudio(videoId) {
         '--no-playlist',
         '-f',
         'bestaudio[ext=m4a]/bestaudio/best',
-        '--extract-audio',
-        '--audio-format',
-        'm4a',
+        '--get-url',
         '--js-runtimes',
         'deno',
         '--remote-components',
@@ -317,8 +340,6 @@ function processAndCacheAudio(videoId) {
         '--extractor-args',
         `youtube:player_client=${playerClient}`,
         ...(hasCookiesFile ? ['--cookies', COOKIES_PATH] : []),
-        '-o',
-        tempPath,
         youtubeUrl,
       ];
       const command = `yt-dlp ${args.map((arg) => JSON.stringify(arg)).join(' ')}`;
@@ -365,8 +386,12 @@ function processAndCacheAudio(videoId) {
       ytdlp.on('error', (error) => finishFailure(error));
       ytdlp.on('close', async (code) => {
         if (attemptSettled) return;
-        const outputExists = fs.existsSync(tempPath);
-        const outputBytes = outputExists ? fs.statSync(tempPath).size : 0;
+        const streamUrl = stdout
+          .trim()
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith('http'))[0];
+
         console.error('[yt-dlp diagnostic]', {
           videoId,
           playerClient,
@@ -375,13 +400,12 @@ function processAndCacheAudio(videoId) {
           signal: attemptTimedOut ? 'SIGTERM/SIGKILL' : null,
           timedOut: attemptTimedOut,
           elapsedMs: Date.now() - attemptStartedAt,
-          outputExists,
-          outputBytes,
+          hasStreamUrl: Boolean(streamUrl),
           stderr: sanitizeDiagnosticText(stderr),
           stdout: sanitizeDiagnosticText(stdout),
         });
 
-        if (code !== 0 || !outputExists || outputBytes === 0) {
+        if (code !== 0 || !streamUrl) {
           clearTimeout(timeout);
           cleanup();
           attemptSettled = true;
@@ -391,7 +415,7 @@ function processAndCacheAudio(videoId) {
 
         clearTimeout(timeout);
         attemptSettled = true;
-        resolveAttempt();
+        resolveAttempt(streamUrl);
       });
     });
 
@@ -399,8 +423,8 @@ function processAndCacheAudio(videoId) {
       let lastError;
       for (const playerClient of playerClients) {
         try {
-          await runExtraction(playerClient);
-          return;
+          const directUrl = await runExtraction(playerClient);
+          return directUrl;
         } catch (error) {
           lastError = error;
           console.warn(`[yt-dlp] ${playerClient} client failed for ${videoId}; trying fallback client.`);
@@ -409,66 +433,16 @@ function processAndCacheAudio(videoId) {
       throw lastError || new Error('yt-dlp extraction failed for all configured clients.');
     };
 
-    extractWithFallback().then(async () => {
+    extractWithFallback().then((directUrl) => {
       if (settled) return;
       settled = true;
 
-      try {
-        const stats = fs.statSync(tempPath);
+      console.log(`[yt-dlp] Direct stream URL extracted for ${videoId}`);
+      setCachedStreamUrl(videoId, directUrl);
 
-        if (stats.size === 0) {
-          cleanup();
-
-          reject(
-            new Error(
-              'yt-dlp produced an empty audio file.'
-            )
-          );
-
-          return;
-        }
-
-        console.log(
-          `[yt-dlp] Download complete: ${videoId} (${stats.size} bytes)`
-        );
-
-        if (!supabase) {
-          cleanup();
-
-          reject(
-            new Error(
-              'Supabase Storage is not configured.'
-            )
-          );
-
-          return;
-        }
-
-        const uploadedUrl =
-          await uploadToSupabaseStorage(
-            videoId,
-            tempPath
-          );
-
-        cleanup();
-
-        if (!uploadedUrl) {
-          reject(
-            new Error(
-              'Supabase Storage did not return a public URL.'
-            )
-          );
-
-          return;
-        }
-
-        resolve({
-          uploadedUrl,
-        });
-      } catch (error) {
-        cleanup();
-        reject(error);
-      }
+      resolve({
+        url: directUrl,
+      });
     }).catch((error) => {
       if (settled) return;
       settled = true;
@@ -539,10 +513,31 @@ app.get('/stream/:videoId', async (req, res) => {
     );
 
     // ---------------------------------------------------------
-    // 1. Check Supabase cache.
+    // 0. Check in-memory stream cache (instant CDN link, 0 storage)
     // ---------------------------------------------------------
 
-    const cachedUrl = await getSupabaseAudioUrl(videoId);
+    const inMemUrl = getCachedStreamUrl(videoId);
+    if (inMemUrl) {
+      failedExtractions.delete(videoId);
+      if (req.query.redirect === 'true') {
+        return res.redirect(302, inMemUrl);
+      }
+      return res.status(200).json({
+        status: 'ready',
+        url: inMemUrl,
+      });
+    }
+
+    // ---------------------------------------------------------
+    // 1. Check Supabase cache (if configured).
+    // ---------------------------------------------------------
+
+    let cachedUrl = null;
+    try {
+      cachedUrl = await getSupabaseAudioUrl(videoId);
+    } catch {
+      // Supabase unavailable or restricted; continue to direct extraction
+    }
 
     if (cachedUrl) {
       failedExtractions.delete(videoId);
