@@ -8,6 +8,7 @@ import {
 } from "@/lib/audio/media-session";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { recordListeningHistory } from "@/lib/music/library";
+import { dbRecordListeningHistory } from "@/lib/storage/client-db";
 import type { Track } from "@/types/music";
 
 export type RepeatMode = "off" | "all" | "one";
@@ -229,13 +230,22 @@ async function recordHistory(trackId: string, meta: { title: string; artist: str
   const lastRecorded = historyCooldown.get(trackId) ?? 0;
   if (now - lastRecorded < 30_000) return;
   historyCooldown.set(trackId, now);
+
+  // 1. Record locally in IndexedDB (Echo Music client-first architecture)
+  try {
+    await dbRecordListeningHistory(trackId, meta, 30);
+  } catch {
+    // ignore
+  }
+
+  // 2. Best effort cloud sync
   try {
     const supabase = createSupabaseBrowserClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await recordListeningHistory(user.id, trackId, meta, 0, supabase);
   } catch (err) {
-    console.error("[PlayerStore] Failed to record listening history", { trackId, err });
+    // Cloud restricted or offline; local IndexedDB persists state reliably
   }
 }
 
@@ -483,7 +493,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     } catch (error) {
       if (!isCurrentRequest(requestId, track, get)) return;
       const message = getErrorMessage(error, "Playback could not start.");
-      console.error("[PlayerStore] Initial track resolution or playback failed", { trackId: track.id, message });
+      console.warn("[PlayerStore] Initial track resolution or playback failed", { trackId: track.id, message });
       void attemptFallbackOrAdvance(message);
     }
   },

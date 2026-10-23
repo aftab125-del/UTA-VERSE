@@ -26,7 +26,11 @@ export async function middleware(request: NextRequest) {
   );
 
   // Refresh the session — keeps server components and the client in sync.
-  await supabase.auth.getUser();
+  try {
+    await supabase.auth.getUser();
+  } catch {
+    // Supabase session refresh failed or restricted; proceed cleanly
+  }
 
   return supabaseResponse;
 }

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { searchInnerTubeSongs } from "@/lib/music/innertube";
+import { spawn } from "child_process";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
-const AUDIO_BUCKET = process.env.AUDIO_CACHE_BUCKET || "audio-cache";
 
 type YouTubeSearchResponse = {
   items?: Array<{
@@ -48,6 +47,74 @@ async function searchYouTube(query: string, apiKey: string) {
   const response = await fetch(`${YOUTUBE_SEARCH_ENDPOINT}?${params.toString()}`, { cache: "no-store" });
   const data = (await response.json().catch(() => ({}))) as YouTubeSearchResponse;
   return { response, data };
+}
+
+async function extractDirectStreamUrl(videoId: string): Promise<string | null> {
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const nodePath = process.execPath;
+  const commonArgs = [
+    "-4",
+    "--no-warnings",
+    "--no-playlist",
+    "-g",
+    "-f",
+    "bestaudio[ext=m4a]/bestaudio/best",
+  ];
+
+  if (nodePath) {
+    commonArgs.push("--js-runtimes", `node:${nodePath}`);
+  }
+
+  const commands = [
+    { cmd: "py", args: ["-m", "yt_dlp", ...commonArgs, youtubeUrl] },
+    { cmd: "python", args: ["-m", "yt_dlp", ...commonArgs, youtubeUrl] },
+    { cmd: "yt-dlp", args: [...commonArgs, youtubeUrl] },
+  ];
+
+  for (const { cmd, args } of commands) {
+    try {
+      const url = await new Promise<string | null>((resolve) => {
+        let stdout = "";
+        let stderr = "";
+        const child = spawn(/*turbopackIgnore: true*/ cmd, args, { windowsHide: true });
+        const timer = setTimeout(() => {
+          try { child.kill(); } catch {}
+          resolve(null);
+        }, 12000);
+
+        child.stdout?.on("data", (chunk: Buffer) => {
+          stdout += chunk.toString();
+        });
+        child.stderr?.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString();
+        });
+        child.on("error", () => {
+          clearTimeout(timer);
+          resolve(null);
+        });
+        child.on("close", (code: number | null) => {
+          clearTimeout(timer);
+          if (code === 0 && stdout.trim().startsWith("http")) {
+            const lines = stdout
+              .trim()
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l.startsWith("http"));
+            resolve(lines[0] || null);
+          } else {
+            resolve(null);
+          }
+        });
+      });
+
+      if (url) {
+        return url;
+      }
+    } catch {
+      // try next fallback
+    }
+  }
+  return null;
 }
 
 type StreamProbeResult =
@@ -95,145 +162,33 @@ async function probeStreamEndpoint(sourceUrl: string): Promise<StreamProbeResult
   }
 }
 
-async function checkSupabasePlaybackCache(videoId: string) {
-  try {
-    const supabase = createSupabaseAdminClient();
+// ── In-Memory Stream Cache (Echo Music Model: Zero Cloud Storage, Zero Disk) ──
+const streamUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const STREAM_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
-    // 1. Check table first (fastest, indexed query)
-    const { data: row } = await supabase
-      .from("playback_cache")
-      .select("audio_url")
-      .eq("video_id", videoId)
-      .maybeSingle();
-
-    if (row?.audio_url) {
-      // Touch last_played_at asynchronously to track playback activity
-      void Promise.resolve(
-        supabase
-          .from("playback_cache")
-          .update({ last_played_at: new Date().toISOString() })
-          .eq("video_id", videoId)
-      ).catch(() => {});
-      return row.audio_url;
-    }
-
-    // 2. Fast direct HTTP HEAD check on public storage bucket URL (CDN fast path)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
-    if (supabaseUrl) {
-      const fileName = `${videoId}.m4a`;
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${AUDIO_BUCKET}/${fileName}`;
-      try {
-        const headRes = await fetch(publicUrl, { method: "HEAD", cache: "no-store" });
-        if (headRes.ok) {
-          const nowIso = new Date().toISOString();
-          void Promise.resolve(
-            supabase
-              .from("playback_cache")
-              .upsert({
-                video_id: videoId,
-                audio_url: publicUrl,
-                created_at: nowIso,
-                last_played_at: nowIso,
-              }, { onConflict: "video_id" })
-          ).catch(() => {});
-          return publicUrl;
-        }
-      } catch (headErr) {
-        console.warn("[PlaybackResolver] Public bucket HEAD check error:", headErr instanceof Error ? headErr.message : headErr);
-      }
-    }
-
-    // 3. Fallback: Check storage bucket via SDK list
-    const fileName = `${videoId}.m4a`;
-    const { data: fileList } = await supabase.storage
-      .from(AUDIO_BUCKET)
-      .list("", { search: fileName, limit: 5 });
-
-    if (Array.isArray(fileList) && fileList.some((f) => f.name === fileName || f.name.startsWith(videoId))) {
-      const publicUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName).data.publicUrl;
-      const nowIso = new Date().toISOString();
-      void Promise.resolve(
-        supabase
-          .from("playback_cache")
-          .upsert({
-            video_id: videoId,
-            audio_url: publicUrl,
-            created_at: nowIso,
-            last_played_at: nowIso,
-          }, { onConflict: "video_id" })
-      ).catch(() => {});
-      return publicUrl;
-    }
-  } catch (cacheErr) {
-    console.warn("[PlaybackResolver] Supabase cache check skipped:", cacheErr instanceof Error ? cacheErr.message : cacheErr);
+function getCachedStream(videoId: string): string | null {
+  const cached = streamUrlCache.get(videoId);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    streamUrlCache.delete(videoId);
+    return null;
   }
-
-  return null;
+  return cached.url;
 }
 
-async function persistAudioToSupabase(videoId: string, title: string, artist: string, streamUrl: string): Promise<string> {
-  try {
-    const supabase = createSupabaseAdminClient();
-
-    const nowIso = new Date().toISOString();
-
-    // If it's already a Supabase public URL, just record in table
-    if (streamUrl.includes(`/storage/v1/object/public/${AUDIO_BUCKET}/`)) {
-      void supabase.from("playback_cache").upsert({
-        video_id: videoId,
-        title,
-        artist,
-        audio_url: streamUrl,
-        created_at: nowIso,
-        last_played_at: nowIso,
-      }, { onConflict: "video_id" });
-      return streamUrl;
+function setCachedStream(videoId: string, url: string): void {
+  // Prune if cache gets too large (> 500 entries)
+  if (streamUrlCache.size > 500) {
+    const now = Date.now();
+    for (const [key, value] of streamUrlCache.entries()) {
+      if (now > value.expiresAt) streamUrlCache.delete(key);
     }
-
-    // Download audio stream and upload to audio-cache bucket
-    console.info(`[PlaybackResolver] Downloading stream to cache in Supabase: ${videoId}`);
-    const audioRes = await fetch(streamUrl);
-    if (!audioRes.ok) {
-      console.warn(`[PlaybackResolver] Could not download audio stream for caching (HTTP ${audioRes.status})`);
-      return streamUrl;
+    if (streamUrlCache.size > 500) {
+      const firstKey = streamUrlCache.keys().next().value;
+      if (firstKey) streamUrlCache.delete(firstKey);
     }
-
-    const arrayBuf = await audioRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuf);
-    const fileName = `${videoId}.m4a`;
-
-    const { error: uploadError } = await supabase.storage
-      .from(AUDIO_BUCKET)
-      .upload(fileName, buffer, {
-        contentType: "audio/mp4",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.warn("[PlaybackResolver] Failed to upload audio to Supabase Storage:", uploadError.message);
-      return streamUrl;
-    }
-
-    const { data: publicUrlData } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName);
-    const permanentUrl = publicUrlData?.publicUrl || streamUrl;
-
-    console.info(`[PlaybackResolver] [CACHE SAVED] ${videoId} cached in ${AUDIO_BUCKET} bucket (${buffer.length} bytes)`);
-
-    void supabase.from("playback_cache").upsert({
-      video_id: videoId,
-      title,
-      artist,
-      audio_url: permanentUrl,
-      file_size: buffer.length,
-      created_at: nowIso,
-      last_played_at: nowIso,
-    }, { onConflict: "video_id" });
-
-    return permanentUrl;
-  } catch (err) {
-    console.warn("[PlaybackResolver] Audio cache persistence error:", err instanceof Error ? err.message : err);
-    return streamUrl;
   }
+  streamUrlCache.set(videoId, { url, expiresAt: Date.now() + STREAM_CACHE_TTL_MS });
 }
 
 export const runtime = "nodejs";
@@ -277,11 +232,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
-  // 1. Check Supabase Storage / playback_cache for instant CDN playback (unless bypassCache requested)
+  // 1. Check in-memory stream cache for instant playback
   if (requestedVideoId && !bypassCache) {
-    const cachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
+    const cachedUrl = getCachedStream(requestedVideoId);
     if (cachedUrl) {
-      console.info(`[PlaybackResolver] [CACHE HIT] Direct Supabase CDN playback for ${requestedVideoId}`);
+      console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from memory for ${requestedVideoId}`);
       return NextResponse.json({ status: "ready", sourceUrl: cachedUrl, videoId: requestedVideoId });
     }
   }
@@ -371,6 +326,7 @@ export async function POST(request: Request) {
       : [...candidates]
         .filter((candidate) => /^[A-Za-z0-9_-]{11}$/.test(candidate.id?.videoId ?? ""))
         .sort((left, right) => candidateScore(right, safeTitle, safeArtist) - candidateScore(left, safeTitle, safeArtist));
+
     if (rankedCandidates.length === 0) {
       console.error("[PlaybackResolver] No playable candidates found", { title: safeTitle, artist: safeArtist, items: candidates.length });
       return NextResponse.json({ error: "No playable source was found for this track." }, { status: 502 });
@@ -380,13 +336,22 @@ export async function POST(request: Request) {
     for (const candidate of rankedCandidates) {
       const videoId = candidate.id?.videoId as string;
 
-      // Check cache for this candidate if not already checked (unless bypassCache requested)
+      // Check in-memory stream cache for candidate
       if (!requestedVideoId && !bypassCache) {
-        const cachedUrl = await checkSupabasePlaybackCache(videoId);
+        const cachedUrl = getCachedStream(videoId);
         if (cachedUrl) {
-          console.info(`[PlaybackResolver] [CACHE HIT] Found candidate in Supabase Storage: ${videoId}`);
+          console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from memory for candidate: ${videoId}`);
           return NextResponse.json({ status: "ready", sourceUrl: cachedUrl, videoId });
         }
+      }
+
+      // 1. Try direct stream extraction (Echo Music model: instant CDN link, 0 cloud storage)
+      console.info("[PlaybackResolver] Attempting direct stream extraction", { videoId });
+      const directStreamUrl = await extractDirectStreamUrl(videoId);
+      if (directStreamUrl) {
+        console.info("[PlaybackResolver] Successfully resolved direct stream URL", { videoId });
+        setCachedStream(videoId, directStreamUrl);
+        return NextResponse.json({ status: "ready", sourceUrl: directStreamUrl, videoId });
       }
 
       const sourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${videoId}`;
@@ -400,19 +365,16 @@ export async function POST(request: Request) {
       });
 
       if (stream.status === "ready") {
-        console.info("[PlaybackResolver] Source resolved, saving to Supabase Storage", {
+        console.info("[PlaybackResolver] Source resolved via direct stream", {
           title,
           artist,
           videoId,
         });
 
-        // Persist to Supabase Storage and database
-        const cachedSourceUrl = await persistAudioToSupabase(videoId, safeTitle, safeArtist, stream.url);
+        // Cache stream URL in memory for fast repeat playback with 0 cloud storage
+        setCachedStream(videoId, stream.url);
 
-        // If bypassCache was requested due to CDN stall/corruption, return direct upstream stream
-        // to immediately unblock playback while cached storage updates in background
-        const returnUrl = bypassCache ? stream.url : cachedSourceUrl;
-        return NextResponse.json({ status: "ready", sourceUrl: returnUrl, videoId });
+        return NextResponse.json({ status: "ready", sourceUrl: stream.url, videoId });
       }
 
       if (stream.status === "processing") {

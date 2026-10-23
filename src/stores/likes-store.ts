@@ -1,13 +1,14 @@
 import { create } from "zustand";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { toggleLikeTrack } from "@/lib/music/library";
+import { dbGetLikedTrackIds, dbToggleLikeTrack } from "@/lib/storage/client-db";
 import type { Track } from "@/types/music";
 
 interface LikesState {
   likedTrackIds: Set<string>;
   initializedUserId: string | null;
   isLoading: boolean;
-  init: (userId: string) => Promise<void>;
+  init: (userId?: string) => Promise<void>;
   isLiked: (trackId: string) => boolean;
   toggleLike: (userId: string, track: Track) => Promise<boolean>;
   reset: () => void;
@@ -18,28 +19,40 @@ export const useLikesStore = create<LikesState>((set, get) => ({
   initializedUserId: null,
   isLoading: false,
 
-  init: async (userId: string) => {
-    if (get().initializedUserId === userId || get().isLoading) return;
+  init: async (userId?: string) => {
+    const effectiveId = userId || "local-user";
+    if (get().initializedUserId === effectiveId && get().likedTrackIds.size > 0) return;
     set({ isLoading: true });
+
+    // 1. Primary: Load instantly from local IndexedDB (Echo Music client-first architecture)
+    try {
+      const localIds = await dbGetLikedTrackIds();
+      if (localIds.size > 0) {
+        set({ likedTrackIds: localIds, initializedUserId: effectiveId, isLoading: false });
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Secondary: If cloud Supabase is configured and not restricted, sync cloud likes
     try {
       const supabase = createSupabaseBrowserClient();
       const { data, error } = await supabase
         .from("liked_tracks")
         .select("track_id")
-        .eq("user_id", userId);
+        .eq("user_id", effectiveId);
 
-      if (error) {
-        console.error("[LikesStore] Failed to load liked tracks", error);
-        set({ isLoading: false });
+      if (!error && Array.isArray(data)) {
+        const idSet = new Set<string>(get().likedTrackIds);
+        data.forEach((row) => idSet.add(row.track_id));
+        set({ likedTrackIds: idSet, initializedUserId: effectiveId, isLoading: false });
         return;
       }
-
-      const idSet = new Set<string>((data ?? []).map((row) => row.track_id));
-      set({ likedTrackIds: idSet, initializedUserId: userId, isLoading: false });
-    } catch (err) {
-      console.error("[LikesStore] Error initializing likes", err);
-      set({ isLoading: false });
+    } catch {
+      // Cloud Supabase unavailable or restricted; local DB is active
     }
+
+    set({ initializedUserId: effectiveId, isLoading: false });
   },
 
   isLiked: (trackId: string) => {
@@ -60,35 +73,40 @@ export const useLikesStore = create<LikesState>((set, get) => ({
     // Optimistic update
     set({ likedTrackIds: nextSet });
 
+    // 1. Save to local IndexedDB (Always succeeds, 0 quota)
+    let localResult = !wasLiked;
     try {
-      const supabase = createSupabaseBrowserClient();
-      const nowLiked = await toggleLikeTrack(
-        userId,
-        track.id,
-        {
-          title: track.title,
-          artist: track.artist,
-          artwork: track.artwork,
-          duration: track.duration,
-        },
-        supabase,
-      );
-
-      // Align state with backend confirmation
-      const confirmedSet = new Set(get().likedTrackIds);
-      if (nowLiked) {
-        confirmedSet.add(track.id);
-      } else {
-        confirmedSet.delete(track.id);
-      }
-      set({ likedTrackIds: confirmedSet });
-      return nowLiked;
-    } catch (err) {
-      console.error("[LikesStore] Failed to toggle like", err);
-      // Rollback
-      set({ likedTrackIds });
-      throw err;
+      localResult = await dbToggleLikeTrack(track.id, {
+        title: track.title,
+        artist: track.artist,
+        artwork: track.artwork,
+        duration: track.duration,
+      });
+    } catch (dbErr) {
+      console.warn("[LikesStore] Local DB write error:", dbErr);
     }
+
+    // 2. Best-effort background sync to Supabase (silently catches quota/network errors)
+    if (userId && userId !== "local-user") {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        await toggleLikeTrack(
+          userId,
+          track.id,
+          {
+            title: track.title,
+            artist: track.artist,
+            artwork: track.artwork,
+            duration: track.duration,
+          },
+          supabase
+        );
+      } catch {
+        // Supabase storage or API restricted; local IndexedDB persists state reliably
+      }
+    }
+
+    return localResult;
   },
 
   reset: () => {

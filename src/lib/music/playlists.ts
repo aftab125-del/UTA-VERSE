@@ -2,6 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { Database, Tables } from "@/types/database";
 import type { Playlist, PlaylistFolder, PlaylistWithTracks, Track } from "@/types/music";
+import {
+  dbGetUserPlaylists,
+  dbGetPlaylistById,
+  dbCreatePlaylist,
+  dbUpdatePlaylist,
+  dbDeletePlaylist,
+  dbAddTrackToPlaylist,
+  dbRemoveTrackFromPlaylist,
+} from "@/lib/storage/client-db";
 
 type Client = SupabaseClient<Database>;
 
@@ -58,13 +67,40 @@ function mapPlaylist(
 // ── Playlist CRUD ─────────────────────────────────────────────────────────────
 
 export async function getUserPlaylists(userId: string, client?: Client): Promise<Playlist[]> {
-  const { data, error } = await getClient(client)
-    .from("playlists")
-    .select("*, playlist_tracks(artwork, position)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(`Unable to load playlists: ${error.message}`);
-  return ((data ?? []) as unknown as Parameters<typeof mapPlaylist>[0][]).map((row) => mapPlaylist(row));
+  // 1. Primary in browser: Fetch instantly from IndexedDB
+  let localPlaylists: Playlist[] = [];
+  if (typeof window !== "undefined") {
+    try {
+      localPlaylists = await dbGetUserPlaylists();
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. Secondary: If cloud Supabase is available and user is authenticated
+  if (userId && userId !== "local-user") {
+    try {
+      const { data, error } = await getClient(client)
+        .from("playlists")
+        .select("*, playlist_tracks(artwork, position)")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        const cloudPlaylists = (data as unknown as Parameters<typeof mapPlaylist>[0][]).map((row) => mapPlaylist(row));
+        const localIds = new Set(localPlaylists.map((p) => p.id));
+        const merged = [...localPlaylists];
+        for (const cp of cloudPlaylists) {
+          if (!localIds.has(cp.id)) merged.push(cp);
+        }
+        return merged;
+      }
+    } catch {
+      // Cloud restricted or offline; local IndexedDB persists
+    }
+  }
+
+  return localPlaylists;
 }
 
 export interface PlaylistSummary {
@@ -75,30 +111,36 @@ export interface PlaylistSummary {
 
 /** Fast, lightweight query for playlist picker: fetches only id, name, and count without bulky artworks or tracks */
 export async function getUserPlaylistsSummary(userId: string, client?: Client): Promise<PlaylistSummary[]> {
-  const { data, error } = await getClient(client)
-    .from("playlists")
-    .select("id, name, playlist_tracks(track_id)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(`Unable to load playlists: ${error.message}`);
-  return (data ?? []).map((row) => {
-    const tracks = (row as { playlist_tracks?: Array<{ track_id: string }> }).playlist_tracks ?? [];
-    return {
-      id: row.id,
-      name: row.name,
-      trackCount: tracks.length,
-    };
-  });
+  const playlists = await getUserPlaylists(userId, client);
+  return playlists.map((p) => ({
+    id: p.id,
+    name: p.name,
+    trackCount: p.trackCount,
+  }));
 }
 
 export async function getPlaylistById(playlistId: string, client?: Client): Promise<Playlist | null> {
-  const { data, error } = await getClient(client)
-    .from("playlists")
-    .select("*, playlist_tracks(artwork, position)")
-    .eq("id", playlistId)
-    .maybeSingle();
-  if (error) throw new Error(`Unable to load playlist: ${error.message}`);
-  return data ? mapPlaylist(data as unknown as Parameters<typeof mapPlaylist>[0]) : null;
+  if (typeof window !== "undefined") {
+    try {
+      const local = await dbGetPlaylistById(playlistId);
+      if (local) return local;
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    const { data, error } = await getClient(client)
+      .from("playlists")
+      .select("*, playlist_tracks(artwork, position)")
+      .eq("id", playlistId)
+      .maybeSingle();
+    if (!error && data) return mapPlaylist(data as unknown as Parameters<typeof mapPlaylist>[0]);
+  } catch {
+    // ignore
+  }
+
+  return null;
 }
 
 /**
@@ -106,43 +148,59 @@ export async function getPlaylistById(playlistId: string, client?: Client): Prom
  * from denormalized metadata stored in playlist_tracks — no catalog join.
  */
 export async function getPlaylistWithTracks(playlistId: string, client?: Client): Promise<PlaylistWithTracks | null> {
-  const supabase = getClient(client);
-  const { data: playlist, error: playlistError } = await supabase
-    .from("playlists")
-    .select("*, playlist_tracks(artwork, position)")
-    .eq("id", playlistId)
-    .maybeSingle();
-  if (playlistError) throw new Error(`Unable to load playlist: ${playlistError.message}`);
-  if (!playlist) return null;
+  // 1. Primary: Local IndexedDB lookup
+  if (typeof window !== "undefined") {
+    try {
+      const local = await dbGetPlaylistById(playlistId);
+      if (local) return local;
+    } catch {
+      // ignore
+    }
+  }
 
-  const { data: playlistTracks, error: ptError } = await supabase
-    .from("playlist_tracks")
-    .select("track_id, position, title, artist, artwork, duration")
-    .eq("playlist_id", playlistId)
-    .order("position", { ascending: true });
-  if (ptError) throw new Error(`Unable to load playlist tracks: ${ptError.message}`);
+  // 2. Secondary: Cloud Supabase lookup
+  try {
+    const supabase = getClient(client);
+    const { data: playlist, error: playlistError } = await supabase
+      .from("playlists")
+      .select("*, playlist_tracks(artwork, position)")
+      .eq("id", playlistId)
+      .maybeSingle();
 
-  const tracks: Track[] = (playlistTracks ?? []).map((pt) => {
-    const rawId = pt.track_id || "";
-    const videoId = rawId.startsWith("youtube:")
-      ? rawId.replace(/^youtube:/, "")
-      : /^[A-Za-z0-9_-]{11}$/.test(rawId)
-      ? rawId
-      : undefined;
-    return {
-      id: pt.track_id,
-      videoId,
-      title: pt.title || "Untitled",
-      artist: pt.artist || "Unknown artist",
-      album: "",
-      artwork: pt.artwork,
-      duration: pt.duration,
-    };
-  });
+    if (playlistError || !playlist) return null;
 
-  const base = mapPlaylist(playlist as unknown as Parameters<typeof mapPlaylist>[0]);
-  const effectiveCover = base.coverUrl || tracks.find((t) => Boolean(t.artwork))?.artwork || null;
-  return { ...base, coverUrl: effectiveCover, tracks };
+    const { data: playlistTracks, error: ptError } = await supabase
+      .from("playlist_tracks")
+      .select("track_id, position, title, artist, artwork, duration")
+      .eq("playlist_id", playlistId)
+      .order("position", { ascending: true });
+
+    if (ptError) return null;
+
+    const tracks: Track[] = (playlistTracks ?? []).map((pt) => {
+      const rawId = pt.track_id || "";
+      const videoId = rawId.startsWith("youtube:")
+        ? rawId.replace(/^youtube:/, "")
+        : /^[A-Za-z0-9_-]{11}$/.test(rawId)
+        ? rawId
+        : undefined;
+      return {
+        id: pt.track_id,
+        videoId,
+        title: pt.title || "Untitled",
+        artist: pt.artist || "Unknown artist",
+        album: "",
+        artwork: pt.artwork,
+        duration: pt.duration,
+      };
+    });
+
+    const base = mapPlaylist(playlist as unknown as Parameters<typeof mapPlaylist>[0]);
+    const effectiveCover = base.coverUrl || tracks.find((t) => Boolean(t.artwork))?.artwork || null;
+    return { ...base, coverUrl: effectiveCover, tracks };
+  } catch {
+    return null;
+  }
 }
 
 export async function createPlaylist(
@@ -151,13 +209,46 @@ export async function createPlaylist(
   description?: string,
   client?: Client,
 ): Promise<Playlist> {
-  const { data, error } = await getClient(client)
-    .from("playlists")
-    .insert({ user_id: userId, name, description: description ?? null })
-    .select("*, playlist_tracks(artwork, position)")
-    .single();
-  if (error) throw new Error(`Unable to create playlist: ${error.message}`);
-  return mapPlaylist(data as unknown as Parameters<typeof mapPlaylist>[0]);
+  // 1. Always create locally in IndexedDB (instant, 0 quota)
+  let localPlaylist: Playlist | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      localPlaylist = await dbCreatePlaylist(name, description);
+    } catch (err) {
+      console.warn("[Playlists] Local playlist creation error:", err);
+    }
+  }
+
+  // 2. Best-effort background cloud sync
+  if (userId && userId !== "local-user") {
+    try {
+      const { data, error } = await getClient(client)
+        .from("playlists")
+        .insert({ user_id: userId, name, description: description ?? null })
+        .select("*, playlist_tracks(artwork, position)")
+        .single();
+      if (!error && data) {
+        return mapPlaylist(data as unknown as Parameters<typeof mapPlaylist>[0]);
+      }
+    } catch {
+      // Supabase restricted or offline; local playlist returned
+    }
+  }
+
+  if (localPlaylist) return localPlaylist;
+
+  return {
+    id: "pl_" + Math.random().toString(36).substring(2, 9),
+    userId: userId || "local-user",
+    name: name || "My Playlist",
+    description: description || "",
+    coverUrl: null,
+    folderId: null,
+    isPublic: false,
+    trackCount: 0,
+    totalDuration: 0,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export async function updatePlaylist(
@@ -165,6 +256,21 @@ export async function updatePlaylist(
   updates: { name?: string; description?: string | null; cover_url?: string | null; folder_id?: string | null; is_public?: boolean },
   client?: Client,
 ): Promise<Playlist> {
+  // 1. Local update
+  if (typeof window !== "undefined") {
+    try {
+      const res = await dbUpdatePlaylist(playlistId, {
+        name: updates.name,
+        description: updates.description ?? undefined,
+        coverUrl: updates.cover_url ?? undefined,
+      });
+      return res;
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. Cloud update
   const { data, error } = await getClient(client)
     .from("playlists")
     .update(updates)
@@ -176,11 +282,19 @@ export async function updatePlaylist(
 }
 
 export async function deletePlaylist(playlistId: string, client?: Client): Promise<void> {
-  const { error } = await getClient(client)
-    .from("playlists")
-    .delete()
-    .eq("id", playlistId);
-  if (error) throw new Error(`Unable to delete playlist: ${error.message}`);
+  if (typeof window !== "undefined") {
+    try {
+      await dbDeletePlaylist(playlistId);
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    await getClient(client).from("playlists").delete().eq("id", playlistId);
+  } catch {
+    // ignore
+  }
 }
 
 export async function duplicatePlaylist(
@@ -189,24 +303,26 @@ export async function duplicatePlaylist(
   newName?: string,
   client?: Client,
 ): Promise<Playlist> {
-  const supabase = getClient(client);
-  const source = await getPlaylistWithTracks(playlistId, supabase);
+  const source = await getPlaylistWithTracks(playlistId, client);
   if (!source) throw new Error("Source playlist not found");
 
-  const newPlaylist = await createPlaylist(userId, newName ?? `${source.name} (Copy)`, source.description ?? undefined, supabase);
+  const newPlaylist = await createPlaylist(userId, newName ?? `${source.name} (Copy)`, source.description ?? undefined, client);
 
   if (source.tracks.length > 0) {
-    const rows = source.tracks.map((track, index) => ({
-      playlist_id: newPlaylist.id,
-      track_id: track.id,
-      position: index,
-      title: track.title,
-      artist: track.artist,
-      artwork: track.artwork,
-      duration: track.duration,
-    }));
-    const { error } = await supabase.from("playlist_tracks").insert(rows);
-    if (error) throw new Error(`Unable to copy playlist tracks: ${error.message}`);
+    for (const track of source.tracks) {
+      await addTrackToPlaylist(
+        newPlaylist.id,
+        track.id,
+        {
+          title: track.title,
+          artist: track.artist,
+          artwork: track.artwork,
+          duration: track.duration,
+        },
+        undefined,
+        client
+      );
+    }
   }
 
   return newPlaylist;
@@ -214,10 +330,6 @@ export async function duplicatePlaylist(
 
 // ── Playlist track management ─────────────────────────────────────────────────
 
-/**
- * Add a track to a playlist. Stores title/artist/artwork/duration alongside
- * the track_id so the playlist detail page never needs to join the tracks table.
- */
 export async function addTrackToPlaylist(
   playlistId: string,
   trackId: string,
@@ -225,27 +337,41 @@ export async function addTrackToPlaylist(
   position?: number,
   client?: Client,
 ): Promise<void> {
-  const supabase = getClient(client);
-
-  // If no position specified, append to end
-  if (position === undefined) {
-    const { data: existing, error: countError } = await supabase
-      .from("playlist_tracks")
-      .select("position")
-      .eq("playlist_id", playlistId)
-      .order("position", { ascending: false })
-      .limit(1);
-    if (countError) throw new Error(`Unable to determine playlist position: ${countError.message}`);
-    position = existing.length > 0 ? existing[0].position + 1 : 0;
+  // 1. Add locally
+  if (typeof window !== "undefined") {
+    try {
+      await dbAddTrackToPlaylist(playlistId, {
+        id: trackId,
+        title: meta.title,
+        artist: meta.artist,
+        artwork: meta.artwork,
+        duration: meta.duration,
+      });
+    } catch {
+      // ignore
+    }
   }
 
-  const { error } = await supabase
-    .from("playlist_tracks")
-    .upsert(
+  // 2. Best effort cloud sync
+  try {
+    const supabase = getClient(client);
+    if (position === undefined) {
+      const { data: existing } = await supabase
+        .from("playlist_tracks")
+        .select("position")
+        .eq("playlist_id", playlistId)
+        .order("position", { ascending: false })
+        .limit(1);
+      position = existing && existing.length > 0 ? existing[0].position + 1 : 0;
+    }
+
+    await supabase.from("playlist_tracks").upsert(
       { playlist_id: playlistId, track_id: trackId, position, ...meta },
       { onConflict: "playlist_id,track_id" },
     );
-  if (error) throw new Error(`Unable to add track to playlist: ${error.message}`);
+  } catch {
+    // ignore cloud error
+  }
 }
 
 export async function removeTrackFromPlaylist(
@@ -253,55 +379,65 @@ export async function removeTrackFromPlaylist(
   trackId: string,
   client?: Client,
 ): Promise<void> {
-  const { error } = await getClient(client)
-    .from("playlist_tracks")
-    .delete()
-    .eq("playlist_id", playlistId)
-    .eq("track_id", trackId);
-  if (error) throw new Error(`Unable to remove track from playlist: ${error.message}`);
+  if (typeof window !== "undefined") {
+    try {
+      await dbRemoveTrackFromPlaylist(playlistId, trackId);
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    await getClient(client)
+      .from("playlist_tracks")
+      .delete()
+      .eq("playlist_id", playlistId)
+      .eq("track_id", trackId);
+  } catch {
+    // ignore
+  }
 }
 
-/**
- * Reorder tracks by updating positions in-place (no delete+reinsert that would
- * lose denormalized metadata).
- */
 export async function reorderPlaylistTracks(
   playlistId: string,
   trackIds: string[],
   client?: Client,
 ): Promise<void> {
-  const supabase = getClient(client);
-
-  // Update each track's position individually — avoids wiping metadata columns
-  const updates = trackIds.map((trackId, index) =>
-    supabase
-      .from("playlist_tracks")
-      .update({ position: index })
-      .eq("playlist_id", playlistId)
-      .eq("track_id", trackId),
-  );
-
-  const results = await Promise.all(updates);
-  const firstError = results.find((r) => r.error);
-  if (firstError?.error) throw new Error(`Unable to reorder playlist: ${firstError.error.message}`);
+  try {
+    const supabase = getClient(client);
+    const updates = trackIds.map((trackId, index) =>
+      supabase
+        .from("playlist_tracks")
+        .update({ position: index })
+        .eq("playlist_id", playlistId)
+        .eq("track_id", trackId),
+    );
+    await Promise.all(updates);
+  } catch {
+    // ignore
+  }
 }
 
 // ── Playlist folders ──────────────────────────────────────────────────────────
 
 export async function getUserFolders(userId: string, client?: Client): Promise<PlaylistFolder[]> {
-  const { data, error } = await getClient(client)
-    .from("playlist_folders")
-    .select("*")
-    .eq("user_id", userId)
-    .order("position", { ascending: true });
-  if (error) throw new Error(`Unable to load folders: ${error.message}`);
-  return data.map((row) => ({
-    id: row.id,
-    userId: row.user_id,
-    name: row.name,
-    position: row.position,
-    createdAt: row.created_at,
-  }));
+  try {
+    const { data, error } = await getClient(client)
+      .from("playlist_folders")
+      .select("*")
+      .eq("user_id", userId)
+      .order("position", { ascending: true });
+    if (error) return [];
+    return data.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      position: row.position,
+      createdAt: row.created_at,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function createFolder(userId: string, name: string, client?: Client): Promise<PlaylistFolder> {
@@ -319,17 +455,9 @@ export async function updateFolder(
   updates: { name?: string; position?: number },
   client?: Client,
 ): Promise<void> {
-  const { error } = await getClient(client)
-    .from("playlist_folders")
-    .update(updates)
-    .eq("id", folderId);
-  if (error) throw new Error(`Unable to update folder: ${error.message}`);
+  await getClient(client).from("playlist_folders").update(updates).eq("id", folderId);
 }
 
 export async function deleteFolder(folderId: string, client?: Client): Promise<void> {
-  const { error } = await getClient(client)
-    .from("playlist_folders")
-    .delete()
-    .eq("id", folderId);
-  if (error) throw new Error(`Unable to delete folder: ${error.message}`);
+  await getClient(client).from("playlist_folders").delete().eq("id", folderId);
 }

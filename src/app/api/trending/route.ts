@@ -5,12 +5,18 @@ import { getInnerTubeTrending } from "@/lib/music/innertube";
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
 const TRENDING_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
+let memoryTrendingCache: { data: any[]; expiresAt: number } | null = null;
+
 export const runtime = "nodejs";
 
 const SPAM_REGEX =
   /\b(mix|top\s*\d+|non\s*stop|nonstop|compilation|playlist|full\s*album|full\s*tracklist|mashup|megamix|\d+\s*hours?|best\s*songs|greatest\s*hits|jukebox|audio\s*jukebox|all\s*songs|collection)\b|[~〜]/i;
 
 export async function GET() {
+  if (memoryTrendingCache && Date.now() < memoryTrendingCache.expiresAt) {
+    return NextResponse.json(memoryTrendingCache.data);
+  }
+
   const supabase = createSupabaseAdminClient();
 
   // 1. Check Supabase trending_cache first
@@ -56,6 +62,8 @@ export async function GET() {
       }));
 
     if (cleanList.length > 0) {
+      memoryTrendingCache = { data: cleanList, expiresAt: Date.now() + TRENDING_CACHE_TTL_MS };
+
       // Asynchronously update Supabase trending_cache
       try {
         void Promise.resolve(
