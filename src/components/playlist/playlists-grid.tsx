@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ArtworkTile } from "@/components/music/artwork-tile";
 import { CreatePlaylistModal } from "@/components/ui/create-playlist-modal";
+import { SpotifyImportModal } from "@/components/playlist/spotify-import-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getUserPlaylists, deletePlaylist } from "@/lib/music/playlists";
 import type { Playlist } from "@/types/music";
@@ -18,6 +19,7 @@ export function PlaylistsGrid({ userId, initialPlaylists = [] }: PlaylistsGridPr
   const [playlists, setPlaylists] = useState<Playlist[]>(initialPlaylists);
   const [loading, setLoading] = useState(initialPlaylists.length === 0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [spotifyImportOpen, setSpotifyImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Playlist | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [supabase] = useState(() => createSupabaseBrowserClient());
@@ -63,6 +65,26 @@ export function PlaylistsGrid({ userId, initialPlaylists = [] }: PlaylistsGridPr
     setCreateOpen(false);
   }
 
+  async function handleImported(imported: { id: string; name: string }) {
+    try {
+      const data = await getUserPlaylists(userId, supabase);
+      setPlaylists(data);
+    } catch {
+      setPlaylists((prev) => [{
+        id: imported.id,
+        userId,
+        name: imported.name,
+        description: "Imported from Spotify",
+        coverUrl: null,
+        folderId: null,
+        isPublic: false,
+        trackCount: 0,
+        totalDuration: 0,
+        createdAt: new Date().toISOString(),
+      }, ...prev]);
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -102,6 +124,16 @@ export function PlaylistsGrid({ userId, initialPlaylists = [] }: PlaylistsGridPr
   return (
     <>
       <div className="playlists-header">
+        <button
+          type="button"
+          className="btn-spotify-import"
+          onClick={() => setSpotifyImportOpen(true)}
+        >
+          <svg className="btn-spotify-import__icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.503 17.31c-.217.355-.678.47-1.033.253-2.83-1.73-6.393-2.122-10.59-1.164-.407.094-.814-.16-.907-.568-.094-.408.16-.814.568-.907 4.607-1.053 8.563-.604 11.71 1.352.354.217.47.678.252 1.034zm1.468-3.264c-.273.444-.858.587-1.302.314-3.24-1.992-8.18-2.57-12.013-1.405-.498.152-1.03-.133-1.182-.632-.152-.5.133-1.03.632-1.182 4.382-1.33 9.82-.689 13.551 1.603.444.273.587.858.314 1.302zm.126-3.41c-3.885-2.308-10.3-2.522-14.02-1.393-.595.18-1.227-.156-1.408-.75-.18-.596.155-1.228.75-1.408 4.28-1.3 11.375-1.047 15.86 1.614.536.318.71 1.015.392 1.55-.318.536-1.015.71-1.574.387z" />
+          </svg>
+          Import from Spotify
+        </button>
         <button type="button" className="liked-songs__play-btn" onClick={() => setCreateOpen(true)}>
           + Create Playlist
         </button>
@@ -111,7 +143,22 @@ export function PlaylistsGrid({ userId, initialPlaylists = [] }: PlaylistsGridPr
         <div className="empty-panel catalog-state">
           <span className="empty-panel__mark" aria-hidden="true">≡</span>
           <h2>No playlists yet</h2>
-          <p>Create your first playlist to start organizing your music.</p>
+          <p>Create your first playlist or import an existing one from Spotify.</p>
+          <div className="empty-panel__actions" style={{ display: "flex", gap: "0.75rem", justifyContent: "center", marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="btn-spotify-import"
+              onClick={() => setSpotifyImportOpen(true)}
+            >
+              <svg className="btn-spotify-import__icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.503 17.31c-.217.355-.678.47-1.033.253-2.83-1.73-6.393-2.122-10.59-1.164-.407.094-.814-.16-.907-.568-.094-.408.16-.814.568-.907 4.607-1.053 8.563-.604 11.71 1.352.354.217.47.678.252 1.034zm1.468-3.264c-.273.444-.858.587-1.302.314-3.24-1.992-8.18-2.57-12.013-1.405-.498.152-1.03-.133-1.182-.632-.152-.5.133-1.03.632-1.182 4.382-1.33 9.82-.689 13.551 1.603.444.273.587.858.314 1.302zm.126-3.41c-3.885-2.308-10.3-2.522-14.02-1.393-.595.18-1.227-.156-1.408-.75-.18-.596.155-1.228.75-1.408 4.28-1.3 11.375-1.047 15.86 1.614.536.318.71 1.015.392 1.55-.318.536-1.015.71-1.574.387z" />
+              </svg>
+              Import from Spotify
+            </button>
+            <button type="button" className="liked-songs__play-btn" onClick={() => setCreateOpen(true)}>
+              + Create Playlist
+            </button>
+          </div>
         </div>
       ) : (
         <div className="playlists-grid">
@@ -143,6 +190,12 @@ export function PlaylistsGrid({ userId, initialPlaylists = [] }: PlaylistsGridPr
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={handleCreated}
+      />
+
+      <SpotifyImportModal
+        open={spotifyImportOpen}
+        onClose={() => setSpotifyImportOpen(false)}
+        onImported={handleImported}
       />
 
       <ConfirmDialog
