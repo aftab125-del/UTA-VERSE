@@ -254,7 +254,7 @@ function processAndCacheAudio(videoId) {
 
     cleanup();
 
-    const playerClients = ['android', 'ios', 'web'];
+    const playerClients = ['android_vr', 'tvhtml5', 'web'];
 
     const runExtraction = (playerClient) => new Promise((resolveAttempt, rejectAttempt) => {
       const args = [
@@ -461,6 +461,38 @@ function pipeStreamResponse(upstreamRes, clientRes, clientReq) {
   });
 }
 
+function getMediaFetchHeaders(streamUrl, clientRange) {
+  const headers = {};
+  if (clientRange) {
+    headers['Range'] = clientRange;
+  }
+
+  try {
+    const parsed = new URL(streamUrl);
+    const clientName = (parsed.searchParams.get('c') || '').toUpperCase();
+    if (clientName.includes('ANDROID_VR')) {
+      headers['User-Agent'] =
+        'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip';
+    } else if (clientName.includes('TVHTML5')) {
+      headers['User-Agent'] =
+        'Mozilla/5.0(SMART-TV; Linux; Tizen 4.0.0.2) AppleWebkit/605.1.15 (KHTML, like Gecko) SamsungBrowser/9.2 TV Safari/605.1.15';
+      headers['Origin'] = 'https://www.youtube.com';
+      headers['Referer'] = 'https://www.youtube.com/';
+    } else if (clientName.includes('IOS')) {
+      headers['User-Agent'] =
+        'com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)';
+    } else {
+      headers['User-Agent'] =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    }
+  } catch {
+    headers['User-Agent'] =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  }
+
+  return headers;
+}
+
 app.get('/audio/:videoId', async (req, res) => {
   const rawVideoId = req.params.videoId.replace(/\.m4a$/, '');
 
@@ -469,7 +501,10 @@ app.get('/audio/:videoId', async (req, res) => {
   }
 
   try {
-    let streamUrl = getCachedStreamUrl(rawVideoId);
+    let streamUrl = typeof req.query.url === 'string' && req.query.url.startsWith('http')
+      ? req.query.url
+      : getCachedStreamUrl(rawVideoId);
+
     if (!streamUrl) {
       console.log(`[AudioProxy] Cache miss for ${rawVideoId}, extracting fresh stream...`);
       const result = await processAndCacheAudio(rawVideoId);
@@ -481,13 +516,7 @@ app.get('/audio/:videoId', async (req, res) => {
     }
 
     const clientRange = req.headers.range;
-    const requestHeaders = {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    };
-    if (clientRange) {
-      requestHeaders['Range'] = clientRange;
-    }
+    const requestHeaders = getMediaFetchHeaders(streamUrl, clientRange);
 
     const proxyReq = https.get(streamUrl, { headers: requestHeaders }, (proxyRes) => {
       // If upstream googlevideo returns 403 (e.g. stale or expired signed URL), refresh cache and retry once

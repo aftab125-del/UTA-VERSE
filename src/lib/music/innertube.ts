@@ -363,3 +363,89 @@ export async function getInnerTubeTrending(): Promise<InnerTubeTrack[]> {
     return [];
   }
 }
+
+/**
+ * Resolves an audio stream directly using YouTube's InnerTube player API.
+ * Uses Android VR (1.65.10) client context modeled after Echo Music to bypass bot-gate checks.
+ */
+export async function resolveInnerTubeAudioStream(
+  videoId: string
+): Promise<{ url: string; mimeType: string; bitrate?: number } | null> {
+  const cleanId = videoId.trim();
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(cleanId)) return null;
+
+  try {
+    const payload = {
+      context: {
+        client: {
+          clientName: "ANDROID_VR",
+          clientVersion: "1.65.10",
+          osName: "Android",
+          osVersion: "12L",
+          deviceMake: "Oculus",
+          deviceModel: "Quest 3",
+          androidSdkVersion: "32",
+          hl: "en",
+          gl: "US",
+        },
+      },
+      videoId: cleanId,
+    };
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+      "User-Agent":
+        "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+      "X-YouTube-Client-Name": "28",
+      "X-YouTube-Client-Version": "1.65.10",
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const response = await fetch("https://www.youtube.com/youtubei/v1/player", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as {
+      playabilityStatus?: { status?: string };
+      streamingData?: {
+        adaptiveFormats?: Array<{ mimeType?: string; url?: string; bitrate?: number }>;
+      };
+    };
+
+    if (data?.playabilityStatus?.status !== "OK") {
+      return null;
+    }
+
+    const adaptive = data?.streamingData?.adaptiveFormats;
+    if (!Array.isArray(adaptive) || adaptive.length === 0) return null;
+
+    // Filter audio streams that carry direct URLs
+    const audioFormats = adaptive.filter(
+      (f): f is { mimeType: string; url: string; bitrate?: number } =>
+        typeof f.url === "string" && Boolean(f.url) && (f.mimeType?.startsWith("audio/") ?? false)
+    );
+
+    if (audioFormats.length === 0) return null;
+
+    // Sort by highest bitrate (prefer best audio fidelity)
+    audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+    return {
+      url: audioFormats[0].url,
+      mimeType: audioFormats[0].mimeType,
+      bitrate: audioFormats[0].bitrate,
+    };
+  } catch (error) {
+    console.warn("[InnerTube] Stream resolution error:", error);
+    return null;
+  }
+}
+

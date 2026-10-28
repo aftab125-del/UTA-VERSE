@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchInnerTubeSongs } from "@/lib/music/innertube";
+import { searchInnerTubeSongs, resolveInnerTubeAudioStream } from "@/lib/music/innertube";
 import { spawn } from "child_process";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
@@ -59,6 +59,8 @@ async function extractDirectStreamUrl(videoId: string): Promise<string | null> {
     "-g",
     "-f",
     "bestaudio[ext=m4a]/bestaudio/best",
+    "--extractor-args",
+    "youtube:player_client=android_vr,tvhtml5",
   ];
 
   if (nodePath) {
@@ -112,6 +114,39 @@ async function extractDirectStreamUrl(videoId: string): Promise<string | null> {
       }
     } catch {
       // try next fallback
+    }
+  }
+  return null;
+}
+
+async function fetchEmergencyPipedStream(videoId: string): Promise<string | null> {
+  const instances = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.ducks.party",
+    "https://pipedapi.leptons.xyz",
+    "https://api.piped.privacydev.net",
+  ];
+
+  for (const base of instances) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(`${base}/streams/${videoId}`, { signal: controller.signal, cache: "no-store" });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as {
+          audioStreams?: Array<{ url?: string; bitrate?: number }>;
+        } | null;
+        const audioStreams = data?.audioStreams;
+        if (Array.isArray(audioStreams) && audioStreams.length > 0) {
+          const sorted = audioStreams
+            .filter((s) => Boolean(s.url))
+            .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          if (sorted[0]?.url) return sorted[0].url;
+        }
+      }
+    } catch {
+      // try next instance
     }
   }
   return null;
@@ -345,12 +380,30 @@ export async function POST(request: Request) {
         }
       }
 
-      // 1. Try direct stream extraction
+      // 0. Primary: Direct InnerTube player stream resolution
+      console.info("[PlaybackResolver] Attempting direct InnerTube stream resolution", { videoId });
+      try {
+        const itStream = await resolveInnerTubeAudioStream(videoId);
+        if (itStream?.url) {
+          console.info("[PlaybackResolver] Successfully resolved stream via InnerTube", { videoId });
+          const streamTarget = NEBULA_MUSIC_SERVER_URL
+            ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}?url=${encodeURIComponent(itStream.url)}`
+            : itStream.url;
+          setCachedStream(videoId, streamTarget);
+          return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId });
+        }
+      } catch (itErr) {
+        console.warn("[PlaybackResolver] Direct InnerTube stream extraction failed:", itErr);
+      }
+
+      // 1. Try local/direct subprocess stream extraction with android_vr client
       console.info("[PlaybackResolver] Attempting direct stream extraction", { videoId });
       const directStreamUrl = await extractDirectStreamUrl(videoId);
       if (directStreamUrl) {
         console.info("[PlaybackResolver] Successfully resolved direct stream URL", { videoId });
-        const streamTarget = NEBULA_MUSIC_SERVER_URL ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}` : directStreamUrl;
+        const streamTarget = NEBULA_MUSIC_SERVER_URL
+          ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}?url=${encodeURIComponent(directStreamUrl)}`
+          : directStreamUrl;
         setCachedStream(videoId, streamTarget);
         return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId });
       }
@@ -388,6 +441,20 @@ export async function POST(request: Request) {
 
       lastStreamFailureError = stream.error;
       console.error("[PlaybackResolver] Stream candidate returned error", { title, artist, videoId, error: stream.error });
+    }
+
+    if (rankedCandidates.length > 0) {
+      const topVideoId = rankedCandidates[0].id?.videoId as string;
+      console.info("[PlaybackResolver] Attempting emergency Piped fallback for", topVideoId);
+      const emergencyStreamUrl = await fetchEmergencyPipedStream(topVideoId);
+      if (emergencyStreamUrl) {
+        console.info("[PlaybackResolver] Resolved via emergency Piped fallback", topVideoId);
+        const streamTarget = NEBULA_MUSIC_SERVER_URL
+          ? `${NEBULA_MUSIC_SERVER_URL}/audio/${topVideoId}?url=${encodeURIComponent(emergencyStreamUrl)}`
+          : emergencyStreamUrl;
+        setCachedStream(topVideoId, streamTarget);
+        return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId: topVideoId });
+      }
     }
 
     console.error("[PlaybackResolver] All stream candidates failed", { title, artist, candidates: rankedCandidates.length, lastStreamFailureError });
