@@ -457,6 +457,58 @@ export async function POST(request: Request) {
       }
     }
 
+    // Secondary Fallback: If requestedVideoId was unplayable (deleted / dead / region-blocked),
+    // search YouTube Music by metadata (title + artist) to find an active alternative
+    if (requestedVideoId && (safeTitle !== "Unknown Track" || safeArtist !== "Unknown Artist")) {
+      console.warn("[PlaybackResolver] requestedVideoId failed to resolve. Searching alternative candidate by metadata...", {
+        requestedVideoId,
+        safeTitle,
+        safeArtist,
+      });
+
+      try {
+        const query = `${safeTitle} ${safeArtist}`;
+        const altSongs = await searchInnerTubeSongs(query);
+        const altCandidates = (altSongs || [])
+          .filter((s) => s.videoId && s.videoId !== requestedVideoId)
+          .map((s) => ({
+            id: { videoId: s.videoId },
+            snippet: { title: s.title, channelTitle: s.channelTitle },
+          }))
+          .sort((a, b) => candidateScore(b, safeTitle, safeArtist) - candidateScore(a, safeTitle, safeArtist));
+
+        for (const alt of altCandidates.slice(0, 3)) {
+          const altId = alt.id.videoId;
+          if (!altId) continue;
+
+          console.info("[PlaybackResolver] Testing alternative metadata candidate", { altId, title: alt.snippet.title });
+
+          // 1. Try InnerTube stream resolution for alt candidate
+          try {
+            const altStream = await resolveInnerTubeAudioStream(altId);
+            if (altStream?.url) {
+              const streamTarget = NEBULA_MUSIC_SERVER_URL
+                ? `${NEBULA_MUSIC_SERVER_URL}/audio/${altId}?url=${encodeURIComponent(altStream.url)}`
+                : altStream.url;
+              setCachedStream(altId, streamTarget);
+              return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId: altId });
+            }
+          } catch {}
+
+          // 2. Try Northflank proxy stream probe
+          const altSourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${altId}`;
+          const altProbe = await probeStreamEndpoint(altSourceUrl);
+          if (altProbe.status === "ready") {
+            const proxiedUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${altId}`;
+            setCachedStream(altId, proxiedUrl);
+            return NextResponse.json({ status: "ready", sourceUrl: proxiedUrl, videoId: altId });
+          }
+        }
+      } catch (altErr) {
+        console.warn("[PlaybackResolver] Metadata fallback search failed:", altErr);
+      }
+    }
+
     console.error("[PlaybackResolver] All stream candidates failed", { title, artist, candidates: rankedCandidates.length, lastStreamFailureError });
     return NextResponse.json({ error: lastStreamFailureError || "The resolved playback stream is unavailable." }, { status: 502 });
   } catch (error) {
