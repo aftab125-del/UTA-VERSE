@@ -3,6 +3,7 @@ const cors = require('cors');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -421,6 +422,118 @@ function getExtractionFailure(videoId) {
   }
   return entry.error;
 }
+
+// -----------------------------------------------------------------------------
+// Audio proxy streaming endpoint (prevents Google Video IP-locking 403 Forbidden)
+// -----------------------------------------------------------------------------
+
+function pipeStreamResponse(upstreamRes, clientRes, clientReq) {
+  clientRes.status(upstreamRes.statusCode || 200);
+
+  const headersToForward = [
+    'content-type',
+    'content-length',
+    'content-range',
+    'accept-ranges',
+    'last-modified',
+    'etag',
+  ];
+
+  for (const h of headersToForward) {
+    if (upstreamRes.headers[h]) {
+      clientRes.setHeader(h, upstreamRes.headers[h]);
+    }
+  }
+
+  clientRes.setHeader('Accept-Ranges', 'bytes');
+  if (!clientRes.getHeader('content-type')) {
+    clientRes.setHeader('Content-Type', 'audio/mp4');
+  }
+  clientRes.setHeader('Access-Control-Allow-Origin', '*');
+  clientRes.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+
+  upstreamRes.pipe(clientRes);
+
+  clientReq.on('close', () => {
+    try {
+      upstreamRes.destroy();
+    } catch {}
+  });
+}
+
+app.get('/audio/:videoId', async (req, res) => {
+  const rawVideoId = req.params.videoId.replace(/\.m4a$/, '');
+
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(rawVideoId)) {
+    return res.status(400).send('Invalid video ID');
+  }
+
+  try {
+    let streamUrl = getCachedStreamUrl(rawVideoId);
+    if (!streamUrl) {
+      console.log(`[AudioProxy] Cache miss for ${rawVideoId}, extracting fresh stream...`);
+      const result = await processAndCacheAudio(rawVideoId);
+      streamUrl = result?.url;
+    }
+
+    if (!streamUrl) {
+      return res.status(502).send('Audio stream extraction failed');
+    }
+
+    const clientRange = req.headers.range;
+    const requestHeaders = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    };
+    if (clientRange) {
+      requestHeaders['Range'] = clientRange;
+    }
+
+    const proxyReq = https.get(streamUrl, { headers: requestHeaders }, (proxyRes) => {
+      // If upstream googlevideo returns 403 (e.g. stale or expired signed URL), refresh cache and retry once
+      if (proxyRes.statusCode === 403) {
+        console.warn(`[AudioProxy] Upstream 403 for ${rawVideoId}. Re-extracting fresh stream...`);
+        inMemoryStreamCache.delete(rawVideoId);
+        processAndCacheAudio(rawVideoId)
+          .then((fresh) => {
+            if (!fresh?.url) {
+              if (!res.headersSent) res.status(502).send('Upstream refresh failed');
+              return;
+            }
+            const retryReq = https.get(fresh.url, { headers: requestHeaders }, (freshRes) => {
+              pipeStreamResponse(freshRes, res, req);
+            });
+            retryReq.on('error', (err) => {
+              console.error('[AudioProxy] Retry stream request error:', err);
+              if (!res.headersSent) res.status(502).send(err.message);
+            });
+            req.on('close', () => {
+              try { retryReq.destroy(); } catch {}
+            });
+          })
+          .catch((err) => {
+            console.error('[AudioProxy] Background re-extraction failed:', err);
+            if (!res.headersSent) res.status(502).send(err.message);
+          });
+        return;
+      }
+
+      pipeStreamResponse(proxyRes, res, req);
+    });
+
+    proxyReq.on('error', (err) => {
+      console.error(`[AudioProxy] Error streaming ${rawVideoId}:`, err);
+      if (!res.headersSent) res.status(502).send(err.message);
+    });
+
+    req.on('close', () => {
+      try { proxyReq.destroy(); } catch {}
+    });
+  } catch (error) {
+    console.error(`[AudioProxy] Handler error for ${rawVideoId}:`, error);
+    if (!res.headersSent) res.status(500).send('Streaming audio proxy error');
+  }
+});
 
 // -----------------------------------------------------------------------------
 // Stream endpoint

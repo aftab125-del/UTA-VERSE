@@ -345,13 +345,14 @@ export async function POST(request: Request) {
         }
       }
 
-      // 1. Try direct stream extraction (Echo Music model: instant CDN link, 0 cloud storage)
+      // 1. Try direct stream extraction
       console.info("[PlaybackResolver] Attempting direct stream extraction", { videoId });
       const directStreamUrl = await extractDirectStreamUrl(videoId);
       if (directStreamUrl) {
         console.info("[PlaybackResolver] Successfully resolved direct stream URL", { videoId });
-        setCachedStream(videoId, directStreamUrl);
-        return NextResponse.json({ status: "ready", sourceUrl: directStreamUrl, videoId });
+        const streamTarget = NEBULA_MUSIC_SERVER_URL ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}` : directStreamUrl;
+        setCachedStream(videoId, streamTarget);
+        return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId });
       }
 
       const sourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${videoId}`;
@@ -365,16 +366,19 @@ export async function POST(request: Request) {
       });
 
       if (stream.status === "ready") {
-        console.info("[PlaybackResolver] Source resolved via direct stream", {
+        console.info("[PlaybackResolver] Source resolved via proxied stream", {
           title,
           artist,
           videoId,
         });
 
-        // Cache stream URL in memory for fast repeat playback with 0 cloud storage
-        setCachedStream(videoId, stream.url);
+        // Deliver audio through the server-side streaming proxy to bypass Google Video client-IP 403 Forbidden blocks
+        const proxiedAudioUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}`;
 
-        return NextResponse.json({ status: "ready", sourceUrl: stream.url, videoId });
+        // Cache proxied stream URL in memory for fast repeat playback with 0 cloud storage
+        setCachedStream(videoId, proxiedAudioUrl);
+
+        return NextResponse.json({ status: "ready", sourceUrl: proxiedAudioUrl, videoId });
       }
 
       if (stream.status === "processing") {
