@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { searchInnerTubeSongs, resolveInnerTubeAudioStream } from "@/lib/music/innertube";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { spawn } from "child_process";
 
 const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
+const AUDIO_BUCKET = process.env.AUDIO_CACHE_BUCKET || "audio-cache";
 
 type YouTubeSearchResponse = {
   items?: Array<{
@@ -197,6 +199,110 @@ async function probeStreamEndpoint(sourceUrl: string): Promise<StreamProbeResult
   }
 }
 
+// ── Supabase Storage & Database Cache Helpers ──
+async function checkSupabasePlaybackCache(videoId: string): Promise<string | null> {
+  try {
+    const supabase = createSupabaseAdminClient();
+
+    // 1. Check table first (fastest indexed query)
+    const { data: row } = await supabase
+      .from("playback_cache")
+      .select("audio_url")
+      .eq("video_id", videoId)
+      .maybeSingle();
+
+    if (row?.audio_url) {
+      void supabase
+        .from("playback_cache")
+        .update({ last_played_at: new Date().toISOString() })
+        .eq("video_id", videoId);
+      return row.audio_url;
+    }
+
+    // 2. Check storage bucket directly
+    const fileName = `${videoId}.m4a`;
+    const { data: fileList } = await supabase.storage
+      .from(AUDIO_BUCKET)
+      .list("", { search: fileName, limit: 1 });
+
+    if (Array.isArray(fileList) && fileList.some((f) => f.name === fileName)) {
+      const publicUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName).data.publicUrl;
+      return publicUrl;
+    }
+  } catch (cacheErr) {
+    console.warn("[PlaybackResolver] Supabase cache check skipped:", cacheErr instanceof Error ? cacheErr.message : cacheErr);
+  }
+
+  return null;
+}
+
+async function persistAudioToSupabase(
+  videoId: string,
+  title: string,
+  artist: string,
+  streamUrl: string
+): Promise<string> {
+  try {
+    const supabase = createSupabaseAdminClient();
+
+    // If it's already a Supabase public URL, just update table
+    if (streamUrl.includes(`/storage/v1/object/public/${AUDIO_BUCKET}/`)) {
+      void supabase.from("playback_cache").upsert({
+        video_id: videoId,
+        title,
+        artist,
+        audio_url: streamUrl,
+        created_at: new Date().toISOString(),
+        last_played_at: new Date().toISOString(),
+      }, { onConflict: "video_id" });
+      return streamUrl;
+    }
+
+    console.info(`[PlaybackResolver] Downloading stream to cache in Supabase: ${videoId}`);
+    const audioRes = await fetch(streamUrl);
+    if (!audioRes.ok) {
+      console.warn(`[PlaybackResolver] Could not download audio stream for Supabase caching (HTTP ${audioRes.status})`);
+      return streamUrl;
+    }
+
+    const arrayBuf = await audioRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
+    const fileName = `${videoId}.m4a`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(AUDIO_BUCKET)
+      .upload(fileName, buffer, {
+        contentType: "audio/mp4",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.warn("[PlaybackResolver] Failed to upload audio to Supabase Storage:", uploadError.message);
+      return streamUrl;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName);
+    const permanentUrl = publicUrlData?.publicUrl || streamUrl;
+
+    console.info(`[PlaybackResolver] [CACHE SAVED] ${videoId} cached in ${AUDIO_BUCKET} bucket (${buffer.length} bytes)`);
+
+    void supabase.from("playback_cache").upsert({
+      video_id: videoId,
+      title,
+      artist,
+      audio_url: permanentUrl,
+      file_size: buffer.length,
+      created_at: new Date().toISOString(),
+      last_played_at: new Date().toISOString(),
+    }, { onConflict: "video_id" });
+
+    return permanentUrl;
+  } catch (err) {
+    console.warn("[PlaybackResolver] Audio cache persistence error:", err instanceof Error ? err.message : err);
+    return streamUrl;
+  }
+}
+
 // ── In-Memory Stream Cache (Echo Music Model: Zero Cloud Storage, Zero Disk) ──
 const streamUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const STREAM_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -267,7 +373,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
-  // 1. Check in-memory stream cache for instant playback
+  // 1. Check Supabase Storage cache first (Permanent CDN Cache across all users)
+  if (requestedVideoId && !bypassCache) {
+    const supabaseCachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
+    if (supabaseCachedUrl) {
+      console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from Supabase Storage for ${requestedVideoId}`);
+      return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: requestedVideoId });
+    }
+  }
+
+  // 2. Check in-memory stream cache for fast repeat playback
   if (requestedVideoId && !bypassCache) {
     const cachedUrl = getCachedStream(requestedVideoId);
     if (cachedUrl) {
@@ -371,6 +486,15 @@ export async function POST(request: Request) {
     for (const candidate of rankedCandidates) {
       const videoId = candidate.id?.videoId as string;
 
+      // Check Supabase Storage cache for candidate
+      if (!requestedVideoId && !bypassCache) {
+        const supabaseCachedUrl = await checkSupabasePlaybackCache(videoId);
+        if (supabaseCachedUrl) {
+          console.info(`[PlaybackResolver] [CACHE HIT] Candidate found in Supabase Storage: ${videoId}`);
+          return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId });
+        }
+      }
+
       // Check in-memory stream cache for candidate
       if (!requestedVideoId && !bypassCache) {
         const cachedUrl = getCachedStream(videoId);
@@ -390,6 +514,7 @@ export async function POST(request: Request) {
             ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}?url=${encodeURIComponent(itStream.url)}`
             : itStream.url;
           setCachedStream(videoId, streamTarget);
+          void persistAudioToSupabase(videoId, safeTitle, safeArtist, streamTarget);
           return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId });
         }
       } catch (itErr) {
@@ -405,6 +530,7 @@ export async function POST(request: Request) {
           ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}?url=${encodeURIComponent(directStreamUrl)}`
           : directStreamUrl;
         setCachedStream(videoId, streamTarget);
+        void persistAudioToSupabase(videoId, safeTitle, safeArtist, streamTarget);
         return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId });
       }
 
@@ -430,6 +556,7 @@ export async function POST(request: Request) {
 
         // Cache proxied stream URL in memory for fast repeat playback with 0 cloud storage
         setCachedStream(videoId, proxiedAudioUrl);
+        void persistAudioToSupabase(videoId, safeTitle, safeArtist, proxiedAudioUrl);
 
         return NextResponse.json({ status: "ready", sourceUrl: proxiedAudioUrl, videoId });
       }
@@ -453,6 +580,7 @@ export async function POST(request: Request) {
           ? `${NEBULA_MUSIC_SERVER_URL}/audio/${topVideoId}?url=${encodeURIComponent(emergencyStreamUrl)}`
           : emergencyStreamUrl;
         setCachedStream(topVideoId, streamTarget);
+        void persistAudioToSupabase(topVideoId, safeTitle, safeArtist, streamTarget);
         return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId: topVideoId });
       }
     }
@@ -483,6 +611,13 @@ export async function POST(request: Request) {
 
           console.info("[PlaybackResolver] Testing alternative metadata candidate", { altId, title: alt.snippet.title });
 
+          // Check Supabase Storage cache first for alt candidate
+          const altCached = await checkSupabasePlaybackCache(altId);
+          if (altCached) {
+            console.info(`[PlaybackResolver] [CACHE HIT] Alternative candidate found in Supabase Storage: ${altId}`);
+            return NextResponse.json({ status: "ready", sourceUrl: altCached, videoId: altId });
+          }
+
           // 1. Try InnerTube stream resolution for alt candidate
           try {
             const altStream = await resolveInnerTubeAudioStream(altId);
@@ -491,6 +626,7 @@ export async function POST(request: Request) {
                 ? `${NEBULA_MUSIC_SERVER_URL}/audio/${altId}?url=${encodeURIComponent(altStream.url)}`
                 : altStream.url;
               setCachedStream(altId, streamTarget);
+              void persistAudioToSupabase(altId, safeTitle, safeArtist, streamTarget);
               return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId: altId });
             }
           } catch {}
@@ -501,6 +637,7 @@ export async function POST(request: Request) {
           if (altProbe.status === "ready") {
             const proxiedUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${altId}`;
             setCachedStream(altId, proxiedUrl);
+            void persistAudioToSupabase(altId, safeTitle, safeArtist, proxiedUrl);
             return NextResponse.json({ status: "ready", sourceUrl: proxiedUrl, videoId: altId });
           }
         }
