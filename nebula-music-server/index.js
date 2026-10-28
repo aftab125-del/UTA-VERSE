@@ -254,13 +254,13 @@ function processAndCacheAudio(videoId) {
 
     cleanup();
 
-    const playerClients = ['android_vr', 'tvhtml5', 'web'];
+    const playerClients = ['visionos', 'tvhtml5', 'android_vr', 'web'];
 
     const runExtraction = (playerClient) => new Promise((resolveAttempt, rejectAttempt) => {
       const args = [
         '--no-playlist',
         '-f',
-        'bestaudio[ext=m4a]/bestaudio/best',
+        '140/bestaudio[ext=m4a]/bestaudio/best',
         '--get-url',
         '--js-runtimes',
         'deno',
@@ -470,7 +470,10 @@ function getMediaFetchHeaders(streamUrl, clientRange) {
   try {
     const parsed = new URL(streamUrl);
     const clientName = (parsed.searchParams.get('c') || '').toUpperCase();
-    if (clientName.includes('ANDROID_VR')) {
+    if (clientName.includes('VISIONOS')) {
+      headers['User-Agent'] =
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+    } else if (clientName.includes('ANDROID_VR')) {
       headers['User-Agent'] =
         'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip';
     } else if (clientName.includes('TVHTML5')) {

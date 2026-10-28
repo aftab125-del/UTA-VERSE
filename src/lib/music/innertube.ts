@@ -374,78 +374,108 @@ export async function resolveInnerTubeAudioStream(
   const cleanId = videoId.trim();
   if (!/^[a-zA-Z0-9_-]{11}$/.test(cleanId)) return null;
 
-  try {
-    const payload = {
-      context: {
-        client: {
-          clientName: "ANDROID_VR",
-          clientVersion: "1.65.10",
-          osName: "Android",
-          osVersion: "12L",
-          deviceMake: "Oculus",
-          deviceModel: "Quest 3",
-          androidSdkVersion: "32",
-          hl: "en",
-          gl: "US",
+  const clientConfigs = [
+    {
+      name: "VISIONOS",
+      payload: {
+        context: {
+          client: {
+            clientName: "VISIONOS",
+            clientVersion: "0.1",
+            osName: "visionOS",
+            osVersion: "1.3.21O771",
+            deviceMake: "Apple",
+            deviceModel: "RealityDevice14,1",
+            hl: "en",
+            gl: "US",
+          },
         },
+        videoId: cleanId,
       },
-      videoId: cleanId,
-    };
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+        "X-YouTube-Client-Name": "101",
+        "X-YouTube-Client-Version": "0.1",
+      },
+    },
+    {
+      name: "ANDROID_VR",
+      payload: {
+        context: {
+          client: {
+            clientName: "ANDROID_VR",
+            clientVersion: "1.65.10",
+            osName: "Android",
+            osVersion: "12L",
+            deviceMake: "Oculus",
+            deviceModel: "Quest 3",
+            androidSdkVersion: "32",
+            hl: "en",
+            gl: "US",
+          },
+        },
+        videoId: cleanId,
+      },
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent":
+          "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+        "X-YouTube-Client-Name": "28",
+        "X-YouTube-Client-Version": "1.65.10",
+      },
+    },
+  ];
 
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-      "User-Agent":
-        "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-      "X-YouTube-Client-Name": "28",
-      "X-YouTube-Client-Version": "1.65.10",
-    };
+  for (const cfg of clientConfigs) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      const response = await fetch("https://www.youtube.com/youtubei/v1/player", {
+        method: "POST",
+        headers: cfg.headers,
+        body: JSON.stringify(cfg.payload),
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      clearTimeout(timer);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    const response = await fetch("https://www.youtube.com/youtubei/v1/player", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    clearTimeout(timer);
+      if (!response.ok) continue;
 
-    if (!response.ok) return null;
-
-    const data = (await response.json()) as {
-      playabilityStatus?: { status?: string };
-      streamingData?: {
-        adaptiveFormats?: Array<{ mimeType?: string; url?: string; bitrate?: number }>;
+      const data = (await response.json()) as {
+        playabilityStatus?: { status?: string };
+        streamingData?: {
+          adaptiveFormats?: Array<{ mimeType?: string; url?: string; bitrate?: number }>;
+        };
       };
-    };
 
-    if (data?.playabilityStatus?.status !== "OK") {
-      return null;
+      if (data?.playabilityStatus?.status !== "OK") continue;
+
+      const adaptive = data?.streamingData?.adaptiveFormats;
+      if (!Array.isArray(adaptive) || adaptive.length === 0) continue;
+
+      // Filter audio streams that carry direct URLs
+      const audioFormats = adaptive.filter(
+        (f): f is { mimeType: string; url: string; bitrate?: number } =>
+          typeof f.url === "string" && Boolean(f.url) && (f.mimeType?.startsWith("audio/") ?? false)
+      );
+
+      if (audioFormats.length === 0) continue;
+
+      // Sort by highest bitrate (prefer best audio fidelity)
+      audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+      return {
+        url: audioFormats[0].url,
+        mimeType: audioFormats[0].mimeType,
+        bitrate: audioFormats[0].bitrate,
+      };
+    } catch {
+      // try next client
     }
-
-    const adaptive = data?.streamingData?.adaptiveFormats;
-    if (!Array.isArray(adaptive) || adaptive.length === 0) return null;
-
-    // Filter audio streams that carry direct URLs
-    const audioFormats = adaptive.filter(
-      (f): f is { mimeType: string; url: string; bitrate?: number } =>
-        typeof f.url === "string" && Boolean(f.url) && (f.mimeType?.startsWith("audio/") ?? false)
-    );
-
-    if (audioFormats.length === 0) return null;
-
-    // Sort by highest bitrate (prefer best audio fidelity)
-    audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-
-    return {
-      url: audioFormats[0].url,
-      mimeType: audioFormats[0].mimeType,
-      bitrate: audioFormats[0].bitrate,
-    };
-  } catch (error) {
-    console.warn("[InnerTube] Stream resolution error:", error);
-    return null;
   }
+
+  return null;
 }
 
