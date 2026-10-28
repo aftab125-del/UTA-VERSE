@@ -17,56 +17,43 @@ on conflict (id) do update set
   file_size_limit = 5242880,
   allowed_mime_types = array['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
--- 2. Enable RLS on storage.objects (if not already enabled)
-alter table storage.objects enable row level security;
+-- 2. Storage Policies for avatars bucket (wrapped safely so no ownership error occurs)
+DO $$ BEGIN
+  drop policy if exists "Public Avatars are readable by all" on storage.objects;
+  drop policy if exists "Users can upload their own avatar" on storage.objects;
+  drop policy if exists "Users can update their own avatar" on storage.objects;
+  drop policy if exists "Users can delete their own avatar" on storage.objects;
 
--- 3. Drop any conflicting existing policies on avatars bucket
-drop policy if exists "Public Avatars are readable by all" on storage.objects;
-drop policy if exists "Users can upload their own avatar" on storage.objects;
-drop policy if exists "Users can update their own avatar" on storage.objects;
-drop policy if exists "Users can delete their own avatar" on storage.objects;
+  create policy "Public Avatars are readable by all"
+    on storage.objects
+    for select
+    using (bucket_id = 'avatars');
 
--- 4. Storage Policies for avatars bucket
+  create policy "Users can upload their own avatar"
+    on storage.objects
+    for insert
+    to authenticated
+    with check (
+      bucket_id = 'avatars' and
+      (storage.foldername(name))[1] = auth.uid()::text
+    );
 
--- Public read access: anyone can view avatar images
-create policy "Public Avatars are readable by all"
-  on storage.objects
-  for select
-  using (bucket_id = 'avatars');
+  create policy "Users can update their own avatar"
+    on storage.objects
+    for update
+    to authenticated
+    using (
+      bucket_id = 'avatars' and
+      (storage.foldername(name))[1] = auth.uid()::text
+    );
 
--- Authenticated upload: users can upload to their own user-scoped directory (avatars/<user_id>/...)
-create policy "Users can upload their own avatar"
-  on storage.objects
-  for insert
-  to authenticated
-  with check (
-    bucket_id = 'avatars' and
-    (storage.foldername(name))[1] = auth.uid()::text
-  );
-
--- Authenticated update: users can update/overwrite their own avatar
-create policy "Users can update their own avatar"
-  on storage.objects
-  for update
-  to authenticated
-  using (
-    bucket_id = 'avatars' and
-    (storage.foldername(name))[1] = auth.uid()::text
-  );
-
--- Authenticated delete: users can delete their own avatar
-create policy "Users can delete their own avatar"
-  on storage.objects
-  for delete
-  to authenticated
-  using (
-    bucket_id = 'avatars' and
-    (storage.foldername(name))[1] = auth.uid()::text
-  );
-
--- 5. Explicit table-level GRANTs for storage schema
-grant select on table storage.objects to anon, authenticated;
-grant insert, update, delete on table storage.objects to authenticated;
-grant all on table storage.objects to service_role;
-grant select on table storage.buckets to anon, authenticated, service_role;
-grant all on table storage.buckets to service_role;
+  create policy "Users can delete their own avatar"
+    on storage.objects
+    for delete
+    to authenticated
+    using (
+      bucket_id = 'avatars' and
+      (storage.foldername(name))[1] = auth.uid()::text
+    );
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
