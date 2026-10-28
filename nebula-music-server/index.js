@@ -85,14 +85,91 @@ app.get('/', (req, res) => {
 // -----------------------------------------------------------------------------
 
 async function getSupabaseAudioUrl(videoId) {
-  // Cloud storage caching disabled to eliminate storage quota limits and bypass restrictions.
-  return null;
+  if (!supabase) return null;
+  const fileName = `${videoId}.m4a`;
+
+  try {
+    const { data: row } = await supabase
+      .from('playback_cache')
+      .select('audio_url')
+      .eq('video_id', videoId)
+      .maybeSingle();
+
+    if (row?.audio_url) {
+      void supabase
+        .from('playback_cache')
+        .update({ last_played_at: new Date().toISOString() })
+        .eq('video_id', videoId);
+      return row.audio_url;
+    }
+
+    const { data, error } = await supabase.storage
+      .from('audio-cache')
+      .list('', {
+        search: fileName,
+        limit: 1,
+      });
+
+    if (error) {
+      console.warn(`[Supabase Storage] List error for ${fileName}:`, error.message);
+      return null;
+    }
+
+    const exists = Array.isArray(data) && data.some((file) => file.name === fileName);
+    if (!exists) return null;
+
+    const { data: publicUrlData } = supabase.storage
+      .from('audio-cache')
+      .getPublicUrl(fileName);
+
+    return publicUrlData?.publicUrl || null;
+  } catch (error) {
+    console.warn(`[Supabase Storage] Check failed for ${videoId}:`, error.message);
+    return null;
+  }
 }
 
-async function uploadToSupabaseStorage(videoId, localFilePath) {
-  // Permanently disabled: Echo Music 0-Cloud-Storage direct CDN streaming model.
-  // Audio streams are delivered directly via unthrottled CDN URLs, maintaining 0 MB cloud storage usage.
-  return null;
+async function uploadToSupabaseStorage(videoId, localFilePathOrBuffer) {
+  if (!supabase) return null;
+  const fileName = `${videoId}.m4a`;
+
+  try {
+    console.log(`[Supabase Storage] Uploading ${fileName}...`);
+    const fileBuffer = Buffer.isBuffer(localFilePathOrBuffer)
+      ? localFilePathOrBuffer
+      : fs.readFileSync(localFilePathOrBuffer);
+
+    const { error } = await supabase.storage
+      .from('audio-cache')
+      .upload(fileName, fileBuffer, {
+        contentType: 'audio/mp4',
+        upsert: true,
+      });
+
+    if (error) {
+      console.error(`[Supabase Storage] Upload failed for ${videoId}:`, error.message);
+      return null;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('audio-cache')
+      .getPublicUrl(fileName);
+
+    const permanentUrl = publicUrlData?.publicUrl || null;
+    if (permanentUrl) {
+      void supabase.from('playback_cache').upsert({
+        video_id: videoId,
+        audio_url: permanentUrl,
+        file_size: fileBuffer.length,
+        created_at: new Date().toISOString(),
+        last_played_at: new Date().toISOString(),
+      }, { onConflict: 'video_id' });
+    }
+    return permanentUrl;
+  } catch (error) {
+    console.error(`[Supabase Storage] Upload error for ${videoId}:`, error.message);
+    return null;
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -369,6 +446,20 @@ function processAndCacheAudio(videoId) {
       console.log(`[yt-dlp] Direct stream URL extracted for ${videoId}`);
       setCachedStreamUrl(videoId, directUrl);
 
+      if (supabase && directUrl) {
+        (async () => {
+          try {
+            const fetchRes = await fetch(directUrl);
+            if (fetchRes.ok) {
+              const arrayBuffer = await fetchRes.arrayBuffer();
+              await uploadToSupabaseStorage(videoId, Buffer.from(arrayBuffer));
+            }
+          } catch (e) {
+            console.warn(`[Supabase Storage] Background archive failed for ${videoId}:`, e.message);
+          }
+        })().catch(() => {});
+      }
+
       resolve({
         url: directUrl,
       });
@@ -504,6 +595,13 @@ app.get('/audio/:videoId', async (req, res) => {
   }
 
   try {
+    // 0. Check Supabase Storage cache first
+    const supabaseUrl = await getSupabaseAudioUrl(rawVideoId);
+    if (supabaseUrl) {
+      console.log(`[AudioProxy] Serving directly from Supabase cache: ${rawVideoId}`);
+      return res.redirect(302, supabaseUrl);
+    }
+
     let streamUrl = typeof req.query.url === 'string' && req.query.url.startsWith('http')
       ? req.query.url.trim()
       : getCachedStreamUrl(rawVideoId);
