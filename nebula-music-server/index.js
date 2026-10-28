@@ -505,13 +505,13 @@ app.get('/audio/:videoId', async (req, res) => {
 
   try {
     let streamUrl = typeof req.query.url === 'string' && req.query.url.startsWith('http')
-      ? req.query.url
+      ? req.query.url.trim()
       : getCachedStreamUrl(rawVideoId);
 
     if (!streamUrl) {
       console.log(`[AudioProxy] Cache miss for ${rawVideoId}, extracting fresh stream...`);
       const result = await processAndCacheAudio(rawVideoId);
-      streamUrl = result?.url;
+      streamUrl = result?.url?.trim();
     }
 
     if (!streamUrl) {
@@ -521,45 +521,61 @@ app.get('/audio/:videoId', async (req, res) => {
     const clientRange = req.headers.range;
     const requestHeaders = getMediaFetchHeaders(streamUrl, clientRange);
 
-    const proxyReq = https.get(streamUrl, { headers: requestHeaders }, (proxyRes) => {
-      // If upstream googlevideo returns 403 (e.g. stale or expired signed URL), refresh cache and retry once
-      if (proxyRes.statusCode === 403) {
-        console.warn(`[AudioProxy] Upstream 403 for ${rawVideoId}. Re-extracting fresh stream...`);
-        inMemoryStreamCache.delete(rawVideoId);
-        processAndCacheAudio(rawVideoId)
-          .then((fresh) => {
-            if (!fresh?.url) {
-              if (!res.headersSent) res.status(502).send('Upstream refresh failed');
-              return;
-            }
-            const retryReq = https.get(fresh.url, { headers: requestHeaders }, (freshRes) => {
-              pipeStreamResponse(freshRes, res, req);
-            });
-            retryReq.on('error', (err) => {
-              console.error('[AudioProxy] Retry stream request error:', err);
-              if (!res.headersSent) res.status(502).send(err.message);
-            });
-            req.on('close', () => {
-              try { retryReq.destroy(); } catch {}
-            });
-          })
-          .catch((err) => {
-            console.error('[AudioProxy] Background re-extraction failed:', err);
-            if (!res.headersSent) res.status(502).send(err.message);
-          });
-        return;
+    let upstreamRes = await fetch(streamUrl, {
+      headers: requestHeaders,
+      redirect: 'follow',
+    });
+
+    // If upstream returns 403, invalidate cache, re-extract, and retry once
+    if (upstreamRes.status === 403) {
+      console.warn(`[AudioProxy] Upstream 403 for ${rawVideoId}. Re-extracting fresh stream...`);
+      inMemoryStreamCache.delete(rawVideoId);
+      const fresh = await processAndCacheAudio(rawVideoId);
+      if (fresh?.url) {
+        streamUrl = fresh.url.trim();
+        const retryHeaders = getMediaFetchHeaders(streamUrl, clientRange);
+        upstreamRes = await fetch(streamUrl, {
+          headers: retryHeaders,
+          redirect: 'follow',
+        });
       }
+    }
 
-      pipeStreamResponse(proxyRes, res, req);
-    });
+    res.status(upstreamRes.status);
 
-    proxyReq.on('error', (err) => {
-      console.error(`[AudioProxy] Error streaming ${rawVideoId}:`, err);
-      if (!res.headersSent) res.status(502).send(err.message);
-    });
+    const headersToForward = [
+      'content-type',
+      'content-length',
+      'content-range',
+      'accept-ranges',
+      'last-modified',
+      'etag',
+    ];
+
+    for (const h of headersToForward) {
+      const val = upstreamRes.headers.get(h);
+      if (val) {
+        res.setHeader(h, val);
+      }
+    }
+
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (!res.getHeader('content-type')) {
+      res.setHeader('Content-Type', 'audio/mp4');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+
+    if (!upstreamRes.body) {
+      return res.end();
+    }
+
+    const { Readable } = require('stream');
+    const nodeStream = Readable.fromWeb(upstreamRes.body);
+    nodeStream.pipe(res);
 
     req.on('close', () => {
-      try { proxyReq.destroy(); } catch {}
+      try { nodeStream.destroy(); } catch {}
     });
   } catch (error) {
     console.error(`[AudioProxy] Handler error for ${rawVideoId}:`, error);
