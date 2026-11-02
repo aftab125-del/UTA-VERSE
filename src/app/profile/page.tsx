@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/shell/app-shell";
 import { ProfileContent } from "@/components/profile/profile-content";
 
 export const metadata: Metadata = {
@@ -10,9 +9,5 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default function ProfilePage() {
-  return (
-    <AppShell>
-      <ProfileContent />
-    </AppShell>
-  );
+  return <ProfileContent />;
 }

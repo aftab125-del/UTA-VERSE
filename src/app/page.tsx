@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { SectionHeading } from "@/components/layout/section-heading";
-import { AppShell } from "@/components/shell/app-shell";
 import { BlurText } from "@/components/reactbits/BlurText";
 import { PersonalDashboard } from "@/components/dashboard/personal-dashboard";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -14,7 +13,7 @@ export default async function HomePage() {
   const { user, displayName, stats } = result.data;
 
   return (
-    <AppShell>
+    <>
       {/* 1. Hero / Intro Section with Personal Greeting & Tagline */}
       <HomeStage displayName={displayName} isUser={Boolean(user)} />
 
@@ -58,7 +57,7 @@ export default async function HomePage() {
           </div>
         </section>
       </div>
-    </AppShell>
+    </>
   );
 }
 

@@ -225,9 +225,13 @@ async function checkSupabasePlaybackCache(videoId: string): Promise<string | nul
       .from(AUDIO_BUCKET)
       .list("", { search: fileName, limit: 1 });
 
-    if (Array.isArray(fileList) && fileList.some((f) => f.name === fileName)) {
-      const publicUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName).data.publicUrl;
-      return publicUrl;
+    if (Array.isArray(fileList)) {
+      const match = fileList.find((f) => f.name === fileName);
+      const size = match?.metadata?.size ?? (match as unknown as { size?: number })?.size ?? 0;
+      if (match && size > 500_000) {
+        const publicUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName).data.publicUrl;
+        return publicUrl;
+      }
     }
   } catch (cacheErr) {
     console.warn("[PlaybackResolver] Supabase cache check skipped:", cacheErr instanceof Error ? cacheErr.message : cacheErr);

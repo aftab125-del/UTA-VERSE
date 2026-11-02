@@ -17,14 +17,31 @@ class Deck {
   public isReady = false;
   public lastBufferedTime = 0;
   private cleanupListeners: (() => void) | null = null;
+  private recoveredNetworkError = false;
 
   constructor() {
     this.element = new Audio();
     this.element.preload = "auto";
+    this.ensureAttached();
+  }
+
+  private ensureAttached() {
+    if (typeof document !== "undefined" && document.body && !this.element.isConnected) {
+      this.element.style.position = "fixed";
+      this.element.style.top = "-9999px";
+      this.element.style.left = "-9999px";
+      this.element.style.width = "1px";
+      this.element.style.height = "1px";
+      this.element.style.opacity = "0";
+      this.element.style.pointerEvents = "none";
+      this.element.setAttribute("aria-hidden", "true");
+      document.body.appendChild(this.element);
+    }
   }
 
   attachListeners(callbacks: AudioEngineCallbacks) {
     this.detachListeners();
+    this.ensureAttached();
 
     const onLoadedMetadata = () => {
       this.isReady = true;
@@ -60,6 +77,7 @@ class Deck {
     };
 
     const onPlaying = () => {
+      this.recoveredNetworkError = false;
       callbacks.onPlaying?.();
     };
 
@@ -75,6 +93,23 @@ class Deck {
       const code = this.element.error?.code ?? null;
       // Code 1 is MEDIA_ERR_ABORTED (user interrupted or replaced source). Ignore it.
       if (code === 1 || !this.element.src || !this.source) return;
+
+      // If it's a network glitch/disconnect (code 2 = MEDIA_ERR_NETWORK), attempt 1 transparent reconnect from current timestamp
+      if (code === 2 && !this.recoveredNetworkError && this.source) {
+        this.recoveredNetworkError = true;
+        const resumePos = this.element.currentTime;
+        console.warn("[Deck] Audio network interruption (code 2). Attempting auto-reconnect at", resumePos);
+        const currentSrc = this.source;
+        this.element.src = currentSrc;
+        this.element.load();
+        if (resumePos > 0) {
+          try {
+            this.element.currentTime = resumePos;
+          } catch {}
+        }
+        void this.element.play().catch(() => {});
+        return;
+      }
 
       console.warn("[Deck] Audio stream error encountered", {
         src: this.element.src,
@@ -122,6 +157,7 @@ class Deck {
     this.source = source;
     this.isReady = false;
     this.lastBufferedTime = 0;
+    this.recoveredNetworkError = false;
     this.attachListeners(callbacks);
     this.element.src = source;
     this.element.load();
@@ -135,6 +171,7 @@ class Deck {
     this.source = null;
     this.isReady = false;
     this.lastBufferedTime = 0;
+    this.recoveredNetworkError = false;
   }
 }
 
@@ -238,7 +275,7 @@ export class AudioEngine {
       console.warn("[AudioEngine] Play request failed", {
         message: error instanceof Error ? error.message : "Unknown error",
       });
-      throw error;
+      return false;
     }
   }
 

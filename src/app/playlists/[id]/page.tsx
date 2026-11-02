@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { AppShell } from "@/components/shell/app-shell";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getPlaylistWithTracks } from "@/lib/music/playlists";
 import { PlaylistDetail } from "@/components/playlist/playlist-detail";
@@ -28,23 +27,17 @@ export default async function PlaylistDetailPage({ params }: { params: Promise<{
 
   // If server didn't find playlist (e.g. stored locally in client IndexedDB), hydrate on client
   if (!playlist) {
-    return (
-      <AppShell>
-        <PlaylistClientHydrator playlistId={id} />
-      </AppShell>
-    );
+    return <PlaylistClientHydrator playlistId={id} />;
   }
 
   const isOwner = user?.id === playlist.userId;
 
   return (
-    <AppShell>
-      <div className="route-content">
-        <Link className="back-link" href="/playlists">
-          ← Back to Playlists
-        </Link>
-        <PlaylistDetail playlist={playlist} isOwner={isOwner} />
-      </div>
-    </AppShell>
+    <div className="route-content">
+      <Link className="back-link" href="/playlists">
+        ← Back to Playlists
+      </Link>
+      <PlaylistDetail playlist={playlist} isOwner={isOwner} />
+    </div>
   );
 }

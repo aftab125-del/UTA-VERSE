@@ -3,6 +3,7 @@ import "./globals.css";
 import { Agentation } from "agentation";
 import { RouteBackground } from "@/components/visual/route-background";
 import { PageBackground } from "@/components/PageBackground";
+import { AppShell } from "@/components/shell/app-shell";
 
 export const metadata: Metadata = {
   title: "UTA-VERSE",
@@ -15,7 +16,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <RouteBackground />
         <PageBackground />
-        {children}
+        <AppShell>{children}</AppShell>
         {process.env.NODE_ENV === "development" && <Agentation endpoint="http://localhost:4747" />}
       </body>
     </html>

@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Navigation4 } from "@/components/navigation/navigation-4";
 import { UserMenu } from "@/components/navigation/user-menu";
 import { PlayerDock } from "@/components/player/player-dock";
@@ -9,6 +12,19 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname();
+  const isAuth = pathname?.startsWith("/auth");
+
+  if (isAuth) {
+    return (
+      <div className="app-shell app-shell--auth">
+        <main className="app-shell__main app-shell__main--auth">{children}</main>
+        <PlayerDock />
+        <GlobalToast />
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <Navigation4 />
@@ -23,4 +39,3 @@ export function AppShell({ children }: AppShellProps) {
     </div>
   );
 }
-
