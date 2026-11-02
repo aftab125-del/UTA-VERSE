@@ -4,6 +4,8 @@ import { resolveInnerTubeAudioStream } from "@/lib/music/innertube";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const NEBULA_MUSIC_SERVER_URL = process.env.NEBULA_MUSIC_SERVER_URL?.replace(/\/+$/, "");
+
 // In-memory stream cache to avoid re-resolving URLs for chunked range requests (2-hour TTL)
 interface CachedStreamData {
   url: string;
@@ -32,6 +34,13 @@ export async function GET(
 
   if (!cleanId || !/^[a-zA-Z0-9_-]{11}$/.test(cleanId)) {
     return new NextResponse("Invalid videoId parameter", { status: 400 });
+  }
+
+  // If dedicated backend server is available (e.g. production Vercel deployment), redirect directly
+  // This bypasses Vercel's 10-second serverless execution limits and YouTube's AWS IP blocking.
+  if (NEBULA_MUSIC_SERVER_URL) {
+    const redirectUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${cleanId}${bypassCache ? "?bypass=1" : ""}`;
+    return NextResponse.redirect(redirectUrl, 307);
   }
 
   if (bypassCache) {

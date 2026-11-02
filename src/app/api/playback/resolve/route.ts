@@ -373,7 +373,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
-  // 1. If videoId is known, check Supabase Storage cache or return native streaming route
+  // 1. If videoId is known, check Supabase Storage cache first
   if (requestedVideoId) {
     if (!bypassCache) {
       const supabaseCachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
@@ -381,21 +381,23 @@ export async function POST(request: Request) {
         console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from Supabase Storage for ${requestedVideoId}`);
         return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: requestedVideoId });
       }
+    }
 
-      console.info(`[PlaybackResolver] Serving via native streaming route for ${requestedVideoId}`);
+    if (NEBULA_MUSIC_SERVER_URL) {
+      console.info(`[PlaybackResolver] Serving via dedicated backend audio server for ${requestedVideoId}`);
       return NextResponse.json({
         status: "ready",
-        sourceUrl: `/api/playback/stream/${requestedVideoId}`,
-        videoId: requestedVideoId,
-      });
-    } else {
-      console.info(`[PlaybackResolver] Cache bypass requested for ${requestedVideoId}`);
-      return NextResponse.json({
-        status: "ready",
-        sourceUrl: `/api/playback/stream/${requestedVideoId}?bypass=1&t=${Date.now()}`,
+        sourceUrl: `${NEBULA_MUSIC_SERVER_URL}/audio/${requestedVideoId}`,
         videoId: requestedVideoId,
       });
     }
+
+    console.info(`[PlaybackResolver] Serving via native streaming route for ${requestedVideoId}`);
+    return NextResponse.json({
+      status: "ready",
+      sourceUrl: `/api/playback/stream/${requestedVideoId}${bypassCache ? "?bypass=1" : ""}`,
+      videoId: requestedVideoId,
+    });
   }
 
   const apiKey = process.env.YOUTUBE_API_KEY;
@@ -496,8 +498,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // Serve candidate via native Next.js bounded-range streaming route
-    console.info(`[PlaybackResolver] Candidate serving via native bounded-range streaming route: ${topVideoId}`);
+    if (NEBULA_MUSIC_SERVER_URL) {
+      console.info(`[PlaybackResolver] Candidate serving via dedicated backend audio server: ${topVideoId}`);
+      return NextResponse.json({
+        status: "ready",
+        sourceUrl: `${NEBULA_MUSIC_SERVER_URL}/audio/${topVideoId}`,
+        videoId: topVideoId,
+      });
+    }
+
+    console.info(`[PlaybackResolver] Candidate serving via native streaming route: ${topVideoId}`);
     return NextResponse.json({
       status: "ready",
       sourceUrl: `/api/playback/stream/${topVideoId}`,
