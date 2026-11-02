@@ -72,9 +72,14 @@ class Deck {
     };
 
     const onError = () => {
+      const code = this.element.error?.code ?? null;
+      // Code 1 is MEDIA_ERR_ABORTED (user interrupted or replaced source). Ignore it.
+      if (code === 1 || !this.element.src || !this.source) return;
+
       console.warn("[Deck] Audio stream error encountered", {
         src: this.element.src,
-        code: this.element.error?.code ?? null,
+        code,
+        message: this.element.error?.message ?? null,
       });
       callbacks.onError?.("The audio source encountered a playback issue.");
     };
@@ -110,6 +115,16 @@ class Deck {
   getBufferedTime(): number {
     const range = this.element.buffered;
     return range.length ? range.end(range.length - 1) : 0;
+  }
+
+  setSource(source: string, callbacks: AudioEngineCallbacks) {
+    this.detachListeners();
+    this.source = source;
+    this.isReady = false;
+    this.lastBufferedTime = 0;
+    this.attachListeners(callbacks);
+    this.element.src = source;
+    this.element.load();
   }
 
   clear() {
@@ -197,21 +212,29 @@ export class AudioEngine {
     }
 
     // Otherwise load on primary deck
-    this.primaryDeck.clear();
-    this.primaryDeck.source = source;
-    this.primaryDeck.element.src = source;
+    this.primaryDeck.setSource(source, callbacks);
     this.applyVolumeToDeck(this.primaryDeck);
-    this.primaryDeck.attachListeners(callbacks);
-    this.primaryDeck.element.load();
 
     callbacks.onLoading?.();
   }
 
-  async play() {
+  async play(): Promise<boolean> {
     if (!this.primaryDeck.source) throw new Error("No audio source is loaded.");
     try {
       await this.primaryDeck.element.play();
+      return true;
     } catch (error) {
+      if (error instanceof Error) {
+        if (error.name === "NotAllowedError") {
+          console.warn("[AudioEngine] Playback was prevented by browser autoplay policy. Waiting for user interaction.");
+          this.currentCallbacks?.onPaused?.();
+          return false;
+        }
+        if (error.name === "AbortError") {
+          console.debug("[AudioEngine] Play request was aborted by a subsequent load/play call.");
+          return false;
+        }
+      }
       console.warn("[AudioEngine] Play request failed", {
         message: error instanceof Error ? error.message : "Unknown error",
       });

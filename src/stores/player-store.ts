@@ -131,7 +131,6 @@ type PlayerState = {
 
 let audioEngine: AudioEngine | null = null;
 let playbackRequestId = 0;
-let consecutivePlaybackErrors = 0;
 const trackRetryAttempts = new Map<string, number>();
 const resolvedSourceCache = new Map<string, string>();
 const inFlightResolutions = new Map<string, Promise<string>>();
@@ -405,7 +404,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               }
             },
             onPlaying: () => {
-              consecutivePlaybackErrors = 0;
               trackRetryAttempts.delete(track.id);
               set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
               setMediaSessionPlaybackState("playing");
@@ -433,7 +431,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
           engine.setVolume(get().isMuted ? 0 : get().volume);
           set({ isResolving: false });
-          await engine.play();
+          const started = await engine.play();
+          if (!started && !get().isPlaying) {
+            set({ isLoading: false, isResolving: false });
+          }
           return;
         } catch (fallbackError) {
           console.warn("[PlayerStore] Upstream fallback resolution failed:", fallbackError);
@@ -446,17 +447,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const handleFatalFailure = (message: string) => {
       if (!isCurrentRequest(requestId, track, get)) return;
       trackRetryAttempts.delete(track.id);
-      consecutivePlaybackErrors++;
-      console.warn("[PlayerStore] Playback exhausted all retries for track:", track.id, message, `(consecutive: ${consecutivePlaybackErrors})`);
-      const { queue: q, queueIndex: qIdx } = get();
-      if (consecutivePlaybackErrors < 3 && q.length > 0 && qIdx + 1 < q.length) {
-        console.info("[PlayerStore] Auto-advancing past unplayable track to keep queue alive");
-        get().next();
-      } else {
-        consecutivePlaybackErrors = 0;
-        audioEngine?.clear();
-        set({ error: message, isPlaying: false, isLoading: false, isResolving: false });
-      }
+      console.warn("[PlayerStore] Playback halted for track:", track.id, message);
+
+      // Do NOT auto-advance get().next() in an uncontrolled skip loop!
+      // Halt and let the user see the status and tap to retry or select another track.
+      audioEngine?.pause();
+      set({ error: message, isPlaying: false, isLoading: false, isResolving: false });
     };
 
     try {
@@ -481,7 +477,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         },
         onPlaying: () => {
-          consecutivePlaybackErrors = 0;
           trackRetryAttempts.delete(track.id);
           set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
           setMediaSessionPlaybackState("playing");
@@ -509,7 +504,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
       engine.setVolume(get().isMuted ? 0 : get().volume);
       set({ isResolving: false });
-      await engine.play();
+      const started = await engine.play();
+      if (!started && !get().isPlaying) {
+        set({ isLoading: false, isResolving: false });
+      }
     } catch (error) {
       if (!isCurrentRequest(requestId, track, get)) return;
       const message = getErrorMessage(error, "Playback could not start.");

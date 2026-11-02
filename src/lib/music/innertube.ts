@@ -564,12 +564,16 @@ export async function resolveInnerTubeAudioStream(
 
       if (audioFormats.length === 0) continue;
 
-      // Sort by highest bitrate (prefer best audio fidelity)
+      // Prioritize universal audio/mp4 (AAC itag 140) first so audio plays reliably on ALL browsers
+      // (Safari, iOS, Chrome, Edge, Firefox, Android WebViews) without Opus codec failures.
+      // Fallback to highest bitrate WebM Opus only if MP4 is not available.
       audioFormats.sort((a, b) => {
-        const isAM4a = a.mimeType.includes("mp4") ? 1 : 0;
-        const isBM4a = b.mimeType.includes("mp4") ? 1 : 0;
-        const bitrateDiff = (b.bitrate || 0) - (a.bitrate || 0);
-        return bitrateDiff !== 0 ? bitrateDiff : isBM4a - isAM4a;
+        const aIsMp4 = a.mimeType.includes("mp4") ? 1 : 0;
+        const bIsMp4 = b.mimeType.includes("mp4") ? 1 : 0;
+        if (aIsMp4 !== bIsMp4) {
+          return bIsMp4 - aIsMp4;
+        }
+        return (b.bitrate || 0) - (a.bitrate || 0);
       });
 
       const selected = audioFormats[0];

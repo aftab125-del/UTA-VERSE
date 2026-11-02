@@ -373,21 +373,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
-  // 1. Check Supabase Storage cache first (Permanent CDN Cache across all users)
-  if (requestedVideoId && !bypassCache) {
-    const supabaseCachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
-    if (supabaseCachedUrl) {
-      console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from Supabase Storage for ${requestedVideoId}`);
-      return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: requestedVideoId });
-    }
+  // 1. If videoId is known, check Supabase Storage cache or return native streaming route
+  if (requestedVideoId) {
+    if (!bypassCache) {
+      const supabaseCachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
+      if (supabaseCachedUrl) {
+        console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from Supabase Storage for ${requestedVideoId}`);
+        return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: requestedVideoId });
+      }
 
-    // 2. Return native Next.js bounded-range streaming route (Echo-Music model)
-    console.info(`[PlaybackResolver] Serving via native bounded-range streaming route for ${requestedVideoId}`);
-    return NextResponse.json({
-      status: "ready",
-      sourceUrl: `/api/playback/stream/${requestedVideoId}`,
-      videoId: requestedVideoId,
-    });
+      console.info(`[PlaybackResolver] Serving via native streaming route for ${requestedVideoId}`);
+      return NextResponse.json({
+        status: "ready",
+        sourceUrl: `/api/playback/stream/${requestedVideoId}`,
+        videoId: requestedVideoId,
+      });
+    } else {
+      console.info(`[PlaybackResolver] Cache bypass requested for ${requestedVideoId}`);
+      return NextResponse.json({
+        status: "ready",
+        sourceUrl: `/api/playback/stream/${requestedVideoId}?bypass=1&t=${Date.now()}`,
+        videoId: requestedVideoId,
+      });
+    }
   }
 
   const apiKey = process.env.YOUTUBE_API_KEY;

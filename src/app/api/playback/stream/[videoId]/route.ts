@@ -16,18 +16,26 @@ interface CachedStreamData {
 const streamCache = new Map<string, CachedStreamData>();
 const STREAM_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
-// Echo-Music's Bounded Range Chunk size (2 MB)
-const CHUNK_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
-
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ videoId: string }> }
 ) {
   const { videoId } = await params;
-  const cleanId = videoId?.replace(/\.(m4a|webm|mp3)$/, "").trim();
+  const urlObj = new URL(request.url);
+  const bypassCache = urlObj.searchParams.get("bypass") === "1" || urlObj.searchParams.has("t");
+
+  // Robust video ID sanitation: strip URL-encoding, prefixes, and file extensions
+  const cleanId = decodeURIComponent(videoId || "")
+    .replace(/^youtube:/, "")
+    .replace(/\.(m4a|webm|mp3)$/, "")
+    .trim();
 
   if (!cleanId || !/^[a-zA-Z0-9_-]{11}$/.test(cleanId)) {
     return new NextResponse("Invalid videoId parameter", { status: 400 });
+  }
+
+  if (bypassCache) {
+    streamCache.delete(cleanId);
   }
 
   // 1. Get cached stream or resolve fresh
@@ -37,6 +45,7 @@ export async function GET(
   if (!streamData || now > streamData.expiresAt) {
     const resolved = await resolveInnerTubeAudioStream(cleanId);
     if (!resolved?.url) {
+      console.error(`[StreamProxy] Failed to resolve InnerTube stream for ${cleanId}`);
       return new NextResponse("Audio stream could not be resolved", { status: 502 });
     }
     streamData = {
@@ -51,41 +60,12 @@ export async function GET(
 
   // 2. Extract requested Range header
   const rangeHeader = request.headers.get("range");
-  const contentLength = streamData.contentLength;
 
-  let upstreamRangeHeader: string | undefined;
-  let isPartial = false;
+  // Crucial: Google Video throttles un-ranged requests to ~30 kB/s, but delivers ranged requests
+  // (such as bytes=0- or bytes=X-) at full 2.5+ MB/s line rate without any artificial chunk bounding.
+  const upstreamRangeHeader = rangeHeader ? rangeHeader : "bytes=0-";
 
-  if (rangeHeader) {
-    isPartial = true;
-    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-    if (match) {
-      const start = parseInt(match[1], 10);
-      let end = match[2] ? parseInt(match[2], 10) : undefined;
-
-      // Crucial Range Chunking from Echo-Music:
-      // If end is not specified, bound the request to 2MB ahead of start.
-      // Unbounded requests are throttled to 15 kB/s by Google Video CDN;
-      // bounded range requests arrive at 5.7 MB/s line rate!
-      if (end === undefined) {
-        const potentialEnd = start + CHUNK_SIZE_BYTES - 1;
-        end = contentLength ? Math.min(potentialEnd, contentLength - 1) : potentialEnd;
-      }
-
-      upstreamRangeHeader = `bytes=${start}-${end}`;
-    } else {
-      upstreamRangeHeader = rangeHeader;
-    }
-  } else {
-    // If browser didn't supply Range, send first chunk to start fast
-    if (contentLength) {
-      const end = Math.min(CHUNK_SIZE_BYTES - 1, contentLength - 1);
-      upstreamRangeHeader = `bytes=0-${end}`;
-      isPartial = true;
-    }
-  }
-
-  // 3. Request audio chunk from Google Video CDN
+  // 3. Request audio from Google Video CDN
   const fetchHeaders: HeadersInit = {
     "User-Agent":
       streamData.clientName === "VISIONOS"
@@ -93,11 +73,11 @@ export async function GET(
         : "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
     Referer: "https://music.youtube.com/",
     Origin: "https://music.youtube.com",
-    ...(upstreamRangeHeader ? { Range: upstreamRangeHeader } : {}),
+    Range: upstreamRangeHeader,
   };
 
   try {
-    const upstreamRes = await fetch(streamData.url, {
+    let upstreamRes = await fetch(streamData.url, {
       headers: fetchHeaders,
       cache: "no-store",
     });
@@ -116,41 +96,63 @@ export async function GET(
             expiresAt: Date.now() + STREAM_CACHE_TTL_MS,
           };
           streamCache.set(cleanId, streamData);
-          const retryRes = await fetch(fresh.url, { headers: fetchHeaders, cache: "no-store" });
-          if (retryRes.ok || retryRes.status === 206) {
-            return buildResponse(retryRes, isPartial);
-          }
+          upstreamRes = await fetch(fresh.url, { headers: fetchHeaders, cache: "no-store" });
         }
       }
-      return new NextResponse(`Upstream audio provider returned ${upstreamRes.status}`, {
-        status: upstreamRes.status,
-      });
+
+      if (!upstreamRes.ok && upstreamRes.status !== 206) {
+        return new NextResponse(`Upstream audio provider returned ${upstreamRes.status}`, {
+          status: upstreamRes.status,
+        });
+      }
     }
 
-    return buildResponse(upstreamRes, isPartial);
+    return buildResponse(upstreamRes, rangeHeader, streamData.mimeType, streamData.contentLength);
   } catch (error) {
     console.error("[StreamProxy] Upstream fetch error:", error);
     return new NextResponse("Failed to proxy audio stream", { status: 502 });
   }
 }
 
-function buildResponse(upstreamRes: Response, isPartial: boolean): Response {
-  const status = upstreamRes.status === 206 || isPartial ? 206 : 200;
+function buildResponse(
+  upstreamRes: Response,
+  requestedRange: string | null,
+  fallbackMimeType: string,
+  fallbackContentLength?: number
+): Response {
   const headers = new Headers();
-
-  const copyHeader = (name: string) => {
-    const val = upstreamRes.headers.get(name);
-    if (val) headers.set(name, val);
-  };
-
-  copyHeader("content-type");
-  copyHeader("content-length");
-  copyHeader("content-range");
   headers.set("accept-ranges", "bytes");
   headers.set("cache-control", "public, max-age=3600, immutable");
 
-  return new Response(upstreamRes.body, {
-    status,
-    headers,
-  });
+  const upstreamContentType = upstreamRes.headers.get("content-type") || fallbackMimeType;
+  headers.set("content-type", upstreamContentType);
+
+  if (requestedRange) {
+    // Client sent Range header (e.g. bytes=0- or bytes=0-1 or bytes=10000-): Return 206 Partial Content
+    const upstreamContentRange = upstreamRes.headers.get("content-range");
+    const upstreamContentLength = upstreamRes.headers.get("content-length");
+    if (upstreamContentRange) headers.set("content-range", upstreamContentRange);
+    if (upstreamContentLength) headers.set("content-length", upstreamContentLength);
+
+    return new Response(upstreamRes.body, {
+      status: 206,
+      headers,
+    });
+  } else {
+    // Client sent standard GET without Range: Return 200 OK (RFC 9110 compliant)
+    const upstreamContentRange = upstreamRes.headers.get("content-range");
+    let totalLength = fallbackContentLength;
+    if (upstreamContentRange) {
+      const match = upstreamContentRange.match(/\/(\d+)$/);
+      if (match) totalLength = parseInt(match[1], 10);
+    }
+    if (totalLength) {
+      headers.set("content-length", totalLength.toString());
+    }
+
+    return new Response(upstreamRes.body, {
+      status: 200,
+      headers,
+    });
+  }
 }
