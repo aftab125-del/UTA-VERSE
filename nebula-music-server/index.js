@@ -51,13 +51,37 @@ if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
 // Cookies configuration
 // -----------------------------------------------------------------------------
 
-const COOKIES_PATH = '/secrets/cookies.txt';
-const hasCookiesFile = fs.existsSync(COOKIES_PATH);
+let COOKIES_PATH = '/secrets/cookies.txt';
+let hasCookiesFile = fs.existsSync(COOKIES_PATH);
+
+// Check if cookies are supplied via environment variables (e.g. YOUTUBE_COOKIES, COOKIES_TXT, COOKIES_DATA)
+if (!hasCookiesFile && (process.env.YOUTUBE_COOKIES || process.env.COOKIES_TXT || process.env.COOKIES_DATA)) {
+  const raw = process.env.YOUTUBE_COOKIES || process.env.COOKIES_TXT || process.env.COOKIES_DATA;
+  let content = (raw || '').trim();
+  // Decode if base64 encoded
+  if (!content.includes('\n') && !content.includes('\t') && content.length > 50) {
+    try {
+      const decoded = Buffer.from(content, 'base64').toString('utf8');
+      if (decoded.includes('youtube.com') || decoded.includes('# Netscape') || decoded.includes('__Secure-')) {
+        content = decoded;
+      }
+    } catch {}
+  }
+  try {
+    const tmpCookiesPath = '/tmp/youtube-cookies.txt';
+    fs.writeFileSync(tmpCookiesPath, content, { mode: 0o600 });
+    COOKIES_PATH = tmpCookiesPath;
+    hasCookiesFile = true;
+    console.log(`[Server] YouTube cookies loaded from environment variable and written to ${COOKIES_PATH}`);
+  } catch (err) {
+    console.warn('[Server] Failed to write environment cookies to disk:', err.message);
+  }
+}
 
 if (hasCookiesFile) {
-  console.log(`[Server] YouTube cookies file detected at ${COOKIES_PATH}. Enabling --cookies for yt-dlp.`);
+  console.log(`[Server] YouTube cookies detected at ${COOKIES_PATH}. Enabling --cookies for yt-dlp.`);
 } else {
-  console.log(`[Server] No YouTube cookies file found at ${COOKIES_PATH}. Running yt-dlp without --cookies.`);
+  console.log(`[Server] No YouTube cookies found. Running yt-dlp with mobile & multi-client fallbacks.`);
 }
 
 // -----------------------------------------------------------------------------
@@ -331,13 +355,13 @@ function processAndCacheAudio(videoId) {
 
     cleanup();
 
-    const playerClients = ['visionos', 'tvhtml5', 'android_vr', 'web'];
+    const playerClients = ['android', 'android,web', 'visionos', 'android_vr', 'web'];
 
     const runExtraction = (playerClient) => new Promise((resolveAttempt, rejectAttempt) => {
       const args = [
         '--no-playlist',
         '-f',
-        '140/bestaudio[ext=m4a]/bestaudio/best',
+        '140/bestaudio[ext=m4a]/18/bestaudio/best',
         '--get-url',
         '--js-runtimes',
         'deno',
@@ -567,6 +591,9 @@ function getMediaFetchHeaders(streamUrl, clientRange) {
     } else if (clientName.includes('ANDROID_VR')) {
       headers['User-Agent'] =
         'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip';
+    } else if (clientName === 'ANDROID' || (clientName.includes('ANDROID') && !clientName.includes('ANDROID_VR'))) {
+      headers['User-Agent'] =
+        'com.google.android.youtube/19.29.37 (Linux; U; Android 14; Pixel 8 Pro Build/UQ1A.240205.004) gzip';
     } else if (clientName.includes('TVHTML5')) {
       headers['User-Agent'] =
         'Mozilla/5.0(SMART-TV; Linux; Tizen 4.0.0.2) AppleWebkit/605.1.15 (KHTML, like Gecko) SamsungBrowser/9.2 TV Safari/605.1.15';

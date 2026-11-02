@@ -60,9 +60,9 @@ async function extractDirectStreamUrl(videoId: string): Promise<string | null> {
     "--no-playlist",
     "-g",
     "-f",
-    "140/bestaudio[ext=m4a]/bestaudio/best",
+    "140/bestaudio[ext=m4a]/18/bestaudio/best",
     "--extractor-args",
-    "youtube:player_client=visionos,tvhtml5,android_vr",
+    "youtube:player_client=android,web,visionos,android_vr",
   ];
 
   if (nodePath) {
