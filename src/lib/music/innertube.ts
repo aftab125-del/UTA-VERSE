@@ -364,15 +364,80 @@ export async function getInnerTubeTrending(): Promise<InnerTubeTrack[]> {
   }
 }
 
+let cachedVisitorData: string | null = null;
+let visitorDataExpiresAt = 0;
+
+/**
+ * Dynamically fetches and caches YouTube Music visitorData token from sw.js_data.
+ * Modelled after Echo Music's visitorData rotation to bypass bot-detection gates.
+ */
+export async function getVisitorData(): Promise<string> {
+  const now = Date.now();
+  if (cachedVisitorData && now < visitorDataExpiresAt) {
+    return cachedVisitorData;
+  }
+
+  try {
+    const res = await fetch("https://music.youtube.com/sw.js_data", {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      },
+      cache: "no-store",
+    });
+
+    if (res.ok) {
+      const text = await res.text();
+      if (text.length > 5) {
+        const rawJson = text.replace(/^\)\]\}'\s*/, "");
+        const parsed = JSON.parse(rawJson);
+
+        function findCg(obj: unknown): string | null {
+          if (typeof obj === "string" && obj.startsWith("Cg")) return obj;
+          if (Array.isArray(obj)) {
+            for (const item of obj) {
+              const found = findCg(item);
+              if (found) return found;
+            }
+          }
+          return null;
+        }
+
+        const token = findCg(parsed);
+        if (token) {
+          cachedVisitorData = token;
+          visitorDataExpiresAt = now + 6 * 60 * 60 * 1000; // 6 hours
+          return token;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[InnerTube] Failed to fetch visitorData:", err);
+  }
+
+  return cachedVisitorData || "";
+}
+
+export interface ResolvedAudioStream {
+  url: string;
+  mimeType: string;
+  bitrate?: number;
+  contentLength?: number;
+  clientName: string;
+  itag?: number;
+}
+
 /**
  * Resolves an audio stream directly using YouTube's InnerTube player API.
- * Uses Android VR (1.65.10) client context modeled after Echo Music to bypass bot-gate checks.
+ * Uses Echo Music's proven client cascade (VISIONOS -> ANDROID_VR -> TVHTML5) with dynamic visitorData.
  */
 export async function resolveInnerTubeAudioStream(
   videoId: string
-): Promise<{ url: string; mimeType: string; bitrate?: number } | null> {
+): Promise<ResolvedAudioStream | null> {
   const cleanId = videoId.trim();
   if (!/^[a-zA-Z0-9_-]{11}$/.test(cleanId)) return null;
+
+  const visitorData = await getVisitorData();
 
   const clientConfigs = [
     {
@@ -381,13 +446,14 @@ export async function resolveInnerTubeAudioStream(
         context: {
           client: {
             clientName: "VISIONOS",
-            clientVersion: "0.1",
+            clientVersion: "1.02",
             osName: "visionOS",
-            osVersion: "1.3.21O771",
+            osVersion: "1.0",
             deviceMake: "Apple",
             deviceModel: "RealityDevice14,1",
             hl: "en",
             gl: "US",
+            ...(visitorData ? { visitorData } : {}),
           },
         },
         videoId: cleanId,
@@ -395,9 +461,10 @@ export async function resolveInnerTubeAudioStream(
       headers: {
         "Content-Type": "application/json",
         "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
         "X-YouTube-Client-Name": "101",
-        "X-YouTube-Client-Version": "0.1",
+        "X-YouTube-Client-Version": "1.02",
+        ...(visitorData ? { "X-Goog-Visitor-Id": visitorData } : {}),
       },
     },
     {
@@ -414,6 +481,7 @@ export async function resolveInnerTubeAudioStream(
             androidSdkVersion: "32",
             hl: "en",
             gl: "US",
+            ...(visitorData ? { visitorData } : {}),
           },
         },
         videoId: cleanId,
@@ -424,6 +492,30 @@ export async function resolveInnerTubeAudioStream(
           "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
         "X-YouTube-Client-Name": "28",
         "X-YouTube-Client-Version": "1.65.10",
+        ...(visitorData ? { "X-Goog-Visitor-Id": visitorData } : {}),
+      },
+    },
+    {
+      name: "TVHTML5",
+      payload: {
+        context: {
+          client: {
+            clientName: "TVHTML5",
+            clientVersion: "7.20250101.08.00",
+            hl: "en",
+            gl: "US",
+            ...(visitorData ? { visitorData } : {}),
+          },
+        },
+        videoId: cleanId,
+      },
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version",
+        "X-YouTube-Client-Name": "31",
+        "X-YouTube-Client-Version": "7.20250101.08.00",
+        ...(visitorData ? { "X-Goog-Visitor-Id": visitorData } : {}),
       },
     },
   ];
@@ -431,7 +523,7 @@ export async function resolveInnerTubeAudioStream(
   for (const cfg of clientConfigs) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
+      const timer = setTimeout(() => controller.abort(), 7000);
       const response = await fetch("https://www.youtube.com/youtubei/v1/player", {
         method: "POST",
         headers: cfg.headers,
@@ -444,35 +536,55 @@ export async function resolveInnerTubeAudioStream(
       if (!response.ok) continue;
 
       const data = (await response.json()) as {
-        playabilityStatus?: { status?: string };
+        playabilityStatus?: { status?: string; reason?: string };
         streamingData?: {
-          adaptiveFormats?: Array<{ mimeType?: string; url?: string; bitrate?: number }>;
+          adaptiveFormats?: Array<{
+            mimeType?: string;
+            url?: string;
+            bitrate?: number;
+            contentLength?: string;
+            itag?: number;
+          }>;
         };
       };
 
-      if (data?.playabilityStatus?.status !== "OK") continue;
+      if (data?.playabilityStatus?.status !== "OK") {
+        console.warn(`[InnerTube] ${cfg.name} playability status:`, data?.playabilityStatus?.status, data?.playabilityStatus?.reason);
+        continue;
+      }
 
       const adaptive = data?.streamingData?.adaptiveFormats;
       if (!Array.isArray(adaptive) || adaptive.length === 0) continue;
 
       // Filter audio streams that carry direct URLs
       const audioFormats = adaptive.filter(
-        (f): f is { mimeType: string; url: string; bitrate?: number } =>
+        (f): f is { mimeType: string; url: string; bitrate?: number; contentLength?: string; itag?: number } =>
           typeof f.url === "string" && Boolean(f.url) && (f.mimeType?.startsWith("audio/") ?? false)
       );
 
       if (audioFormats.length === 0) continue;
 
       // Sort by highest bitrate (prefer best audio fidelity)
-      audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+      audioFormats.sort((a, b) => {
+        const isAM4a = a.mimeType.includes("mp4") ? 1 : 0;
+        const isBM4a = b.mimeType.includes("mp4") ? 1 : 0;
+        const bitrateDiff = (b.bitrate || 0) - (a.bitrate || 0);
+        return bitrateDiff !== 0 ? bitrateDiff : isBM4a - isAM4a;
+      });
+
+      const selected = audioFormats[0];
+      const parsedLen = selected.contentLength ? parseInt(selected.contentLength, 10) : undefined;
 
       return {
-        url: audioFormats[0].url,
-        mimeType: audioFormats[0].mimeType,
-        bitrate: audioFormats[0].bitrate,
+        url: selected.url,
+        mimeType: selected.mimeType,
+        bitrate: selected.bitrate,
+        contentLength: parsedLen,
+        clientName: cfg.name,
+        itag: selected.itag,
       };
-    } catch {
-      // try next client
+    } catch (err) {
+      console.warn(`[InnerTube] ${cfg.name} stream resolution error:`, err);
     }
   }
 

@@ -380,20 +380,14 @@ export async function POST(request: Request) {
       console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from Supabase Storage for ${requestedVideoId}`);
       return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: requestedVideoId });
     }
-  }
 
-  // 2. Check in-memory stream cache for fast repeat playback
-  if (requestedVideoId && !bypassCache) {
-    const cachedUrl = getCachedStream(requestedVideoId);
-    if (cachedUrl) {
-      console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from memory for ${requestedVideoId}`);
-      return NextResponse.json({ status: "ready", sourceUrl: cachedUrl, videoId: requestedVideoId });
-    }
-  }
-
-  if (!NEBULA_MUSIC_SERVER_URL) {
-    console.error("[PlaybackResolver] NEBULA_MUSIC_SERVER_URL is not configured.");
-    return NextResponse.json({ error: "Playback source resolution is not configured." }, { status: 500 });
+    // 2. Return native Next.js bounded-range streaming route (Echo-Music model)
+    console.info(`[PlaybackResolver] Serving via native bounded-range streaming route for ${requestedVideoId}`);
+    return NextResponse.json({
+      status: "ready",
+      sourceUrl: `/api/playback/stream/${requestedVideoId}`,
+      videoId: requestedVideoId,
+    });
   }
 
   const apiKey = process.env.YOUTUBE_API_KEY;
@@ -482,172 +476,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No playable source was found for this track." }, { status: 502 });
     }
 
-    let lastStreamFailureError: string | null = null;
-    for (const candidate of rankedCandidates) {
-      const videoId = candidate.id?.videoId as string;
+    const topCandidate = rankedCandidates[0];
+    const topVideoId = topCandidate.id?.videoId as string;
 
-      // Check Supabase Storage cache for candidate
-      if (!requestedVideoId && !bypassCache) {
-        const supabaseCachedUrl = await checkSupabasePlaybackCache(videoId);
-        if (supabaseCachedUrl) {
-          console.info(`[PlaybackResolver] [CACHE HIT] Candidate found in Supabase Storage: ${videoId}`);
-          return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId });
-        }
-      }
-
-      // Check in-memory stream cache for candidate
-      if (!requestedVideoId && !bypassCache) {
-        const cachedUrl = getCachedStream(videoId);
-        if (cachedUrl) {
-          console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from memory for candidate: ${videoId}`);
-          return NextResponse.json({ status: "ready", sourceUrl: cachedUrl, videoId });
-        }
-      }
-
-      // 0. Primary: Direct InnerTube player stream resolution
-      console.info("[PlaybackResolver] Attempting direct InnerTube stream resolution", { videoId });
-      try {
-        const itStream = await resolveInnerTubeAudioStream(videoId);
-        if (itStream?.url) {
-          console.info("[PlaybackResolver] Successfully resolved stream via InnerTube", { videoId });
-          const streamTarget = NEBULA_MUSIC_SERVER_URL
-            ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}?url=${encodeURIComponent(itStream.url)}`
-            : itStream.url;
-          setCachedStream(videoId, streamTarget);
-          void persistAudioToSupabase(videoId, safeTitle, safeArtist, streamTarget);
-          return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId });
-        }
-      } catch (itErr) {
-        console.warn("[PlaybackResolver] Direct InnerTube stream extraction failed:", itErr);
-      }
-
-      // 1. Try local/direct subprocess stream extraction with android_vr client
-      console.info("[PlaybackResolver] Attempting direct stream extraction", { videoId });
-      const directStreamUrl = await extractDirectStreamUrl(videoId);
-      if (directStreamUrl) {
-        console.info("[PlaybackResolver] Successfully resolved direct stream URL", { videoId });
-        const streamTarget = NEBULA_MUSIC_SERVER_URL
-          ? `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}?url=${encodeURIComponent(directStreamUrl)}`
-          : directStreamUrl;
-        setCachedStream(videoId, streamTarget);
-        void persistAudioToSupabase(videoId, safeTitle, safeArtist, streamTarget);
-        return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId });
-      }
-
-      const sourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${videoId}`;
-      console.info("[PlaybackResolver] Probing stream candidate", { title, artist, videoId, bypassCache });
-      const stream = await probeStreamEndpoint(sourceUrl);
-      console.info("[PlaybackResolver] Stream endpoint response", {
-        title,
-        artist,
-        videoId,
-        status: stream.status,
-      });
-
-      if (stream.status === "ready") {
-        console.info("[PlaybackResolver] Source resolved via proxied stream", {
-          title,
-          artist,
-          videoId,
-        });
-
-        // Deliver audio through the server-side streaming proxy to bypass Google Video client-IP 403 Forbidden blocks
-        const proxiedAudioUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${videoId}`;
-
-        // Cache proxied stream URL in memory for fast repeat playback with 0 cloud storage
-        setCachedStream(videoId, proxiedAudioUrl);
-        void persistAudioToSupabase(videoId, safeTitle, safeArtist, proxiedAudioUrl);
-
-        return NextResponse.json({ status: "ready", sourceUrl: proxiedAudioUrl, videoId });
-      }
-
-      if (stream.status === "processing") {
-        console.info("[PlaybackResolver] Stream processing in background", { title, artist, videoId });
-        return NextResponse.json({ status: "processing", videoId }, { status: 202 });
-      }
-
-      lastStreamFailureError = stream.error;
-      console.error("[PlaybackResolver] Stream candidate returned error", { title, artist, videoId, error: stream.error });
-    }
-
-    if (rankedCandidates.length > 0) {
-      const topVideoId = rankedCandidates[0].id?.videoId as string;
-      console.info("[PlaybackResolver] Attempting emergency Piped fallback for", topVideoId);
-      const emergencyStreamUrl = await fetchEmergencyPipedStream(topVideoId);
-      if (emergencyStreamUrl) {
-        console.info("[PlaybackResolver] Resolved via emergency Piped fallback", topVideoId);
-        const streamTarget = NEBULA_MUSIC_SERVER_URL
-          ? `${NEBULA_MUSIC_SERVER_URL}/audio/${topVideoId}?url=${encodeURIComponent(emergencyStreamUrl)}`
-          : emergencyStreamUrl;
-        setCachedStream(topVideoId, streamTarget);
-        void persistAudioToSupabase(topVideoId, safeTitle, safeArtist, streamTarget);
-        return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId: topVideoId });
+    // Check Supabase Storage cache for candidate
+    if (!requestedVideoId && !bypassCache) {
+      const supabaseCachedUrl = await checkSupabasePlaybackCache(topVideoId);
+      if (supabaseCachedUrl) {
+        console.info(`[PlaybackResolver] [CACHE HIT] Candidate found in Supabase Storage: ${topVideoId}`);
+        return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: topVideoId });
       }
     }
 
-    // Secondary Fallback: If requestedVideoId was unplayable (deleted / dead / region-blocked),
-    // search YouTube Music by metadata (title + artist) to find an active alternative
-    if (requestedVideoId && (safeTitle !== "Unknown Track" || safeArtist !== "Unknown Artist")) {
-      console.warn("[PlaybackResolver] requestedVideoId failed to resolve. Searching alternative candidate by metadata...", {
-        requestedVideoId,
-        safeTitle,
-        safeArtist,
-      });
-
-      try {
-        const query = `${safeTitle} ${safeArtist}`;
-        const altSongs = await searchInnerTubeSongs(query);
-        const altCandidates = (altSongs || [])
-          .filter((s) => s.videoId && s.videoId !== requestedVideoId)
-          .map((s) => ({
-            id: { videoId: s.videoId },
-            snippet: { title: s.title, channelTitle: s.channelTitle },
-          }))
-          .sort((a, b) => candidateScore(b, safeTitle, safeArtist) - candidateScore(a, safeTitle, safeArtist));
-
-        for (const alt of altCandidates.slice(0, 3)) {
-          const altId = alt.id.videoId;
-          if (!altId) continue;
-
-          console.info("[PlaybackResolver] Testing alternative metadata candidate", { altId, title: alt.snippet.title });
-
-          // Check Supabase Storage cache first for alt candidate
-          const altCached = await checkSupabasePlaybackCache(altId);
-          if (altCached) {
-            console.info(`[PlaybackResolver] [CACHE HIT] Alternative candidate found in Supabase Storage: ${altId}`);
-            return NextResponse.json({ status: "ready", sourceUrl: altCached, videoId: altId });
-          }
-
-          // 1. Try InnerTube stream resolution for alt candidate
-          try {
-            const altStream = await resolveInnerTubeAudioStream(altId);
-            if (altStream?.url) {
-              const streamTarget = NEBULA_MUSIC_SERVER_URL
-                ? `${NEBULA_MUSIC_SERVER_URL}/audio/${altId}?url=${encodeURIComponent(altStream.url)}`
-                : altStream.url;
-              setCachedStream(altId, streamTarget);
-              void persistAudioToSupabase(altId, safeTitle, safeArtist, streamTarget);
-              return NextResponse.json({ status: "ready", sourceUrl: streamTarget, videoId: altId });
-            }
-          } catch {}
-
-          // 2. Try Northflank proxy stream probe
-          const altSourceUrl = `${NEBULA_MUSIC_SERVER_URL}/stream/${altId}`;
-          const altProbe = await probeStreamEndpoint(altSourceUrl);
-          if (altProbe.status === "ready") {
-            const proxiedUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${altId}`;
-            setCachedStream(altId, proxiedUrl);
-            void persistAudioToSupabase(altId, safeTitle, safeArtist, proxiedUrl);
-            return NextResponse.json({ status: "ready", sourceUrl: proxiedUrl, videoId: altId });
-          }
-        }
-      } catch (altErr) {
-        console.warn("[PlaybackResolver] Metadata fallback search failed:", altErr);
-      }
-    }
-
-    console.error("[PlaybackResolver] All stream candidates failed", { title, artist, candidates: rankedCandidates.length, lastStreamFailureError });
-    return NextResponse.json({ error: lastStreamFailureError || "The resolved playback stream is unavailable." }, { status: 502 });
+    // Serve candidate via native Next.js bounded-range streaming route
+    console.info(`[PlaybackResolver] Candidate serving via native bounded-range streaming route: ${topVideoId}`);
+    return NextResponse.json({
+      status: "ready",
+      sourceUrl: `/api/playback/stream/${topVideoId}`,
+      videoId: topVideoId,
+    });
   } catch (error) {
     const resolverError = error instanceof Error ? error : new Error("Unknown resolver error");
     const cause = resolverError.cause;

@@ -9,6 +9,7 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { recordListeningHistory } from "@/lib/music/library";
 import { dbRecordListeningHistory } from "@/lib/storage/client-db";
+import { getCachedAudioBlobUrl } from "@/lib/storage/audio-cache";
 import type { Track } from "@/types/music";
 
 export type RepeatMode = "off" | "all" | "one";
@@ -146,6 +147,24 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 async function resolveTrackSource(track: Track, bypassCache = false): Promise<string> {
+  const inferredVideoId =
+    track.videoId ||
+    (track.id?.startsWith("youtube:") ? track.id.replace(/^youtube:/, "") : undefined) ||
+    (/^[A-Za-z0-9_-]{11}$/.test(track.id) ? track.id : undefined);
+
+  // 1. Check local IndexedDB audio blob cache first (Instant 0ms replay)
+  if (!bypassCache && inferredVideoId) {
+    try {
+      const cachedBlobUrl = await getCachedAudioBlobUrl(inferredVideoId);
+      if (cachedBlobUrl) {
+        console.info(`[PlayerStore] [CACHE HIT] Loaded ${track.title} directly from IndexedDB`);
+        return cachedBlobUrl;
+      }
+    } catch {
+      // IndexedDB unavailable or cold
+    }
+  }
+
   if (!bypassCache) {
     const cachedSource = resolvedSourceCache.get(track.id);
     if (cachedSource) return cachedSource;
@@ -158,12 +177,7 @@ async function resolveTrackSource(track: Track, bypassCache = false): Promise<st
 
   const promise = (async () => {
     try {
-      const maxAttempts = 45;
-      const inferredVideoId =
-        track.videoId ||
-        (track.id?.startsWith("youtube:") ? track.id.replace(/^youtube:/, "") : undefined) ||
-        (/^[A-Za-z0-9_-]{11}$/.test(track.id) ? track.id : undefined);
-
+      const maxAttempts = 3;
       let videoIdOverride = inferredVideoId;
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -195,14 +209,14 @@ async function resolveTrackSource(track: Track, bypassCache = false): Promise<st
         }
 
         if (response.status === 202 || data.status === "processing") {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           continue;
         }
 
         throw new Error(typeof data.error === "string" ? data.error : "The playback source could not be resolved.");
       }
 
-      throw new Error("Playback resolution timed out after 90 seconds.");
+      throw new Error("Playback resolution timed out.");
     } finally {
       inFlightResolutions.delete(track.id);
     }
@@ -214,11 +228,17 @@ async function resolveTrackSource(track: Track, bypassCache = false): Promise<st
   return promise;
 }
 
-function prefetchNextTrackSource(nextTrack?: Track | null) {
-  if (!nextTrack || nextTrack.audioUrl || resolvedSourceCache.has(nextTrack.id)) return;
-  void resolveTrackSource(nextTrack).catch((err) => {
-    console.debug("[PlayerStore] Background pre-resolve of next track skipped/failed", err);
-  });
+async function prefetchNextTrackSource(nextTrack?: Track | null) {
+  if (!nextTrack) return;
+  try {
+    const sourceUrl = nextTrack.audioUrl ?? await resolveTrackSource(nextTrack);
+    if (sourceUrl) {
+      // Pre-arm standby deck for 0ms gapless transition (Echo-Music model)
+      getAudioEngine().preArm(sourceUrl);
+    }
+  } catch (err) {
+    console.debug("[PlayerStore] Background pre-arm of next track skipped/failed", err);
+  }
 }
 
 function isCurrentRequest(requestId: number, track: Track, get: () => PlayerState) {
@@ -244,7 +264,7 @@ async function recordHistory(trackId: string, meta: { title: string; artist: str
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await recordListeningHistory(user.id, trackId, meta, 0, supabase);
-  } catch (err) {
+  } catch {
     // Cloud restricted or offline; local IndexedDB persists state reliably
   }
 }
