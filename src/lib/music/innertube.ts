@@ -364,7 +364,10 @@ export async function getInnerTubeTrending(): Promise<InnerTubeTrack[]> {
   }
 }
 
-let cachedVisitorData: string | null = null;
+const DEFAULT_VISITOR_DATA =
+  "CgtqVExzZXIxN21sZyiX6-zWBjIKCgJJThIEGgAgS2KrAgqoAkN0c0JDQVVTalFFQjhRWnVacVhJUUk4a1psd1ZkR3k4anl6UlVabUhOczhSaDVrSjVvVGduSVExZDc5QnFjenZtVzlFeGRhMzFPeXZLckVwSG4yQXJTT0hVRVpxTTVvRkpjSmx2RnMyaGtWZkxCY0J1WFVoQWRaUHZMcjhHZW5OQ0I0ZlMxVE5lNi1MRDB2V1VEMGNrX2ZXMFJab0VSNXZtUjFhdVhqV2ZEcHJEQmY4UWl6ZGlxalg0T1JFVGZzdm5SaGFuQkVvQlRKRkFkNnBuVS1BUFJDWW9oZXVNajJQUWxGUkZGWU85N0dva2ZmOFV4VENmRzNnLTE4ZElHVmMwVTdkY2Zhb203djNja0xqRDNKdlhyczZtdVFNUzRRTjJ3MGw3cGtG";
+
+let cachedVisitorData: string = DEFAULT_VISITOR_DATA;
 let visitorDataExpiresAt = 0;
 
 /**
@@ -415,7 +418,7 @@ export async function getVisitorData(): Promise<string> {
     console.warn("[InnerTube] Failed to fetch visitorData:", err);
   }
 
-  return cachedVisitorData || "";
+  return cachedVisitorData || DEFAULT_VISITOR_DATA;
 }
 
 export interface ResolvedAudioStream {
@@ -427,15 +430,38 @@ export interface ResolvedAudioStream {
   itag?: number;
 }
 
+// In-memory stream cache with 2-hour TTL to eliminate redundant YouTube player resolutions
+interface CachedStreamEntry {
+  stream: ResolvedAudioStream;
+  expiresAt: number;
+}
+const resolvedStreamCache = new Map<string, CachedStreamEntry>();
+const STREAM_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+export function invalidateInnerTubeAudioStream(videoId: string): void {
+  const cleanId = videoId.trim();
+  resolvedStreamCache.delete(cleanId);
+}
+
 /**
  * Resolves an audio stream directly using YouTube's InnerTube player API.
- * Uses Echo Music's proven client cascade (VISIONOS -> ANDROID_VR -> TVHTML5) with dynamic visitorData.
+ * Uses Echo Music's proven client cascade (VISIONOS -> ANDROID_VR -> IOS -> TVHTML5) with dynamic visitorData.
  */
 export async function resolveInnerTubeAudioStream(
-  videoId: string
+  videoId: string,
+  bypassCache = false
 ): Promise<ResolvedAudioStream | null> {
   const cleanId = videoId.trim();
   if (!/^[a-zA-Z0-9_-]{11}$/.test(cleanId)) return null;
+
+  if (!bypassCache) {
+    const cached = resolvedStreamCache.get(cleanId);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.stream;
+    }
+  } else {
+    resolvedStreamCache.delete(cleanId);
+  }
 
   const visitorData = await getVisitorData();
 
@@ -474,6 +500,27 @@ export async function resolveInnerTubeAudioStream(
           client: {
             clientName: "ANDROID_VR",
             clientVersion: "1.65.10",
+            hl: "en",
+            gl: "US",
+            ...(visitorData ? { visitorData } : {}),
+          },
+        },
+        videoId: cleanId,
+      },
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        ...(visitorData ? { "X-Goog-Visitor-Id": visitorData } : {}),
+      },
+    },
+    {
+      name: "ANDROID_VR_OCULUS",
+      payload: {
+        context: {
+          client: {
+            clientName: "ANDROID_VR",
+            clientVersion: "1.65.10",
             osName: "Android",
             osVersion: "12L",
             deviceMake: "Oculus",
@@ -492,6 +539,31 @@ export async function resolveInnerTubeAudioStream(
           "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
         "X-YouTube-Client-Name": "28",
         "X-YouTube-Client-Version": "1.65.10",
+        ...(visitorData ? { "X-Goog-Visitor-Id": visitorData } : {}),
+      },
+    },
+    {
+      name: "IOS",
+      payload: {
+        context: {
+          client: {
+            clientName: "IOS",
+            clientVersion: "19.45.4",
+            deviceMake: "Apple",
+            deviceModel: "iPhone16,2",
+            hl: "en",
+            gl: "US",
+            ...(visitorData ? { visitorData } : {}),
+          },
+        },
+        videoId: cleanId,
+      },
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent":
+          "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1 like Mac OS X; en_US)",
+        "X-YouTube-Client-Name": "5",
+        "X-YouTube-Client-Version": "19.45.4",
         ...(visitorData ? { "X-Goog-Visitor-Id": visitorData } : {}),
       },
     },
@@ -564,7 +636,7 @@ export async function resolveInnerTubeAudioStream(
 
       if (audioFormats.length === 0) continue;
 
-      // Prioritize universal audio/mp4 (AAC itag 140) first so audio plays reliably on ALL browsers
+      // Prioritize universal audio/mp4 (AAC itag 140/139) first so audio plays reliably on ALL browsers
       // (Safari, iOS, Chrome, Edge, Firefox, Android WebViews) without Opus codec failures.
       // Fallback to highest bitrate WebM Opus only if MP4 is not available.
       audioFormats.sort((a, b) => {
@@ -579,7 +651,7 @@ export async function resolveInnerTubeAudioStream(
       const selected = audioFormats[0];
       const parsedLen = selected.contentLength ? parseInt(selected.contentLength, 10) : undefined;
 
-      return {
+      const result: ResolvedAudioStream = {
         url: selected.url,
         mimeType: selected.mimeType,
         bitrate: selected.bitrate,
@@ -587,6 +659,13 @@ export async function resolveInnerTubeAudioStream(
         clientName: cfg.name,
         itag: selected.itag,
       };
+
+      resolvedStreamCache.set(cleanId, {
+        stream: result,
+        expiresAt: Date.now() + STREAM_CACHE_TTL_MS,
+      });
+
+      return result;
     } catch (err) {
       console.warn(`[InnerTube] ${cfg.name} stream resolution error:`, err);
     }

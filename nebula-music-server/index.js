@@ -383,7 +383,7 @@ function processAndCacheAudio(videoId) {
       const args = [
         '--no-playlist',
         '-f',
-        '140/bestaudio[ext=m4a]/18/bestaudio/best',
+        '140/bestaudio[ext=m4a]/251/bestaudio[ext=webm]/bestaudio',
         '--get-url',
         '--js-runtimes',
         'deno',
@@ -709,9 +709,11 @@ app.get('/audio/:videoId', async (req, res) => {
     }
 
     res.setHeader('Accept-Ranges', 'bytes');
-    if (!res.getHeader('content-type')) {
-      res.setHeader('Content-Type', 'audio/mp4');
-    }
+    const rawContentType = res.getHeader('content-type') || upstreamRes.headers.get('content-type') || 'audio/mp4';
+    const safeContentType = typeof rawContentType === 'string' && rawContentType.startsWith('video/')
+      ? rawContentType.replace('video/', 'audio/')
+      : rawContentType;
+    res.setHeader('Content-Type', safeContentType);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
 

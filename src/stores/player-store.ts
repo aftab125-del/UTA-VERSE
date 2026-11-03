@@ -218,6 +218,7 @@ async function resolveTrackSource(track: Track, bypassCache = false): Promise<st
 
         if (typeof data.videoId === "string" && data.videoId) {
           videoIdOverride = data.videoId;
+          track.videoId = data.videoId;
         }
 
         if (response.ok && typeof data.sourceUrl === "string" && data.sourceUrl) {

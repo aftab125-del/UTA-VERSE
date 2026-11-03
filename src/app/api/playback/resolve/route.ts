@@ -420,32 +420,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid track title and artist are required." }, { status: 400 });
   }
 
-  // 1. If videoId is known, check Supabase Storage cache first
-  if (requestedVideoId) {
-    if (!bypassCache) {
-      const supabaseCachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
-      if (supabaseCachedUrl) {
-        console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from Supabase Storage for ${requestedVideoId}`);
-        return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: requestedVideoId });
-      }
+  // 1. If videoId is known and valid, probe or check cache
+  let needsCandidateSearch = !requestedVideoId || bypassCache;
+
+  if (requestedVideoId && !bypassCache) {
+    const supabaseCachedUrl = await checkSupabasePlaybackCache(requestedVideoId);
+    if (supabaseCachedUrl) {
+      console.info(`[PlaybackResolver] [CACHE HIT] Direct stream from Supabase Storage for ${requestedVideoId}`);
+      return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: requestedVideoId });
     }
 
-    console.info(`[PlaybackResolver] Serving via native streaming route for ${requestedVideoId}`);
-    return NextResponse.json({
-      status: "ready",
-      sourceUrl: `/api/playback/stream/${requestedVideoId}${bypassCache ? "?bypass=1" : ""}`,
-      videoId: requestedVideoId,
-    });
+    // Verify requestedVideoId is playable before serving
+    const stream = await resolveInnerTubeAudioStream(requestedVideoId);
+    if (stream?.url) {
+      console.info(`[PlaybackResolver] Serving via native streaming route for verified videoId ${requestedVideoId}`);
+      return NextResponse.json({
+        status: "ready",
+        sourceUrl: `/api/playback/stream/${requestedVideoId}`,
+        videoId: requestedVideoId,
+      });
+    }
+
+    console.warn(`[PlaybackResolver] requestedVideoId "${requestedVideoId}" is dead or unavailable. Initiating self-healing search for "${safeTitle}"...`);
+    needsCandidateSearch = true;
   }
 
   const apiKey = process.env.YOUTUBE_API_KEY;
 
   try {
-    const queries = requestedVideoId ? [] : [`${safeTitle} ${safeArtist}`, `${safeArtist} ${safeTitle} audio`];
+    const queries = [`${safeTitle} ${safeArtist}`, `${safeArtist} ${safeTitle} audio`];
     let candidates: SearchCandidate[] = [];
     let lastFailure: { status: number; reason: string | null; message: string | null } | null = null;
 
-    if (!requestedVideoId) {
+    if (needsCandidateSearch) {
       // 1. Primary: Use InnerTube (Zero quota, instant YouTube Music match)
       try {
         const query = `${safeTitle} ${safeArtist}`;
@@ -462,7 +469,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!requestedVideoId && candidates.length === 0 && apiKey) {
+    if (needsCandidateSearch && candidates.length === 0 && apiKey) {
       for (const searchQuery of queries) {
         const requestUrl = `${YOUTUBE_SEARCH_ENDPOINT}?part=snippet&type=video&videoCategoryId=10&maxResults=5&q=${encodeURIComponent(searchQuery)}&key=[redacted]`;
         console.info("[PlaybackResolver] YouTube search request fallback", { requestUrl, searchQuery });
@@ -488,7 +495,7 @@ export async function POST(request: Request) {
     }
 
     // Fallback: If YouTube Data API failed or has no key, query backend search
-    if (!requestedVideoId && (lastFailure || candidates.length === 0)) {
+    if (needsCandidateSearch && (lastFailure || candidates.length === 0)) {
       console.info("[PlaybackResolver] Querying backend search fallback", { title: safeTitle, artist: safeArtist });
       try {
         const query = `${safeTitle} ${safeArtist}`;
@@ -513,30 +520,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The playback source search failed." }, { status: 502 });
     }
 
-    const rankedCandidates = requestedVideoId
-      ? [{ id: { videoId: requestedVideoId }, snippet: { title: safeTitle, channelTitle: safeArtist } }]
-      : [...candidates]
-        .filter((candidate) => /^[A-Za-z0-9_-]{11}$/.test(candidate.id?.videoId ?? ""))
-        .sort((left, right) => candidateScore(right, safeTitle, safeArtist) - candidateScore(left, safeTitle, safeArtist));
+    const rankedCandidates = [...candidates]
+      .filter((candidate) => /^[A-Za-z0-9_-]{11}$/.test(candidate.id?.videoId ?? ""))
+      .sort((left, right) => candidateScore(right, safeTitle, safeArtist) - candidateScore(left, safeTitle, safeArtist));
 
     if (rankedCandidates.length === 0) {
       console.error("[PlaybackResolver] No playable candidates found", { title: safeTitle, artist: safeArtist, items: candidates.length });
       return NextResponse.json({ error: "No playable source was found for this track." }, { status: 502 });
     }
 
-    const topCandidate = rankedCandidates[0];
-    const topVideoId = topCandidate.id?.videoId as string;
-
-    // Check Supabase Storage cache for candidate
-    if (!requestedVideoId && !bypassCache) {
-      const supabaseCachedUrl = await checkSupabasePlaybackCache(topVideoId);
-      if (supabaseCachedUrl) {
-        console.info(`[PlaybackResolver] [CACHE HIT] Candidate found in Supabase Storage: ${topVideoId}`);
-        return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: topVideoId });
+    // Probe the top candidate streams to ensure playability before returning to client
+    for (const cand of rankedCandidates.slice(0, 3)) {
+      const vid = cand.id?.videoId;
+      if (!vid) continue;
+      const verified = await resolveInnerTubeAudioStream(vid);
+      if (verified?.url) {
+        console.info(`[PlaybackResolver] [HEALED/VERIFIED] Returning verified stream for ${vid} ("${safeTitle}")`);
+        return NextResponse.json({
+          status: "ready",
+          sourceUrl: `/api/playback/stream/${vid}`,
+          videoId: vid,
+        });
       }
     }
 
-    console.info(`[PlaybackResolver] Candidate serving via native streaming route: ${topVideoId}`);
+    // Fallback: If verification loop was inconclusive, use top candidate
+    const topVideoId = rankedCandidates[0].id?.videoId as string;
     return NextResponse.json({
       status: "ready",
       sourceUrl: `/api/playback/stream/${topVideoId}`,
