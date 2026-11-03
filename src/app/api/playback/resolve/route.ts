@@ -430,15 +430,6 @@ export async function POST(request: Request) {
       }
     }
 
-    if (NEBULA_MUSIC_SERVER_URL) {
-      console.info(`[PlaybackResolver] Serving via dedicated backend audio server for ${requestedVideoId}`);
-      return NextResponse.json({
-        status: "ready",
-        sourceUrl: `${NEBULA_MUSIC_SERVER_URL}/audio/${requestedVideoId}`,
-        videoId: requestedVideoId,
-      });
-    }
-
     console.info(`[PlaybackResolver] Serving via native streaming route for ${requestedVideoId}`);
     return NextResponse.json({
       status: "ready",
@@ -543,15 +534,6 @@ export async function POST(request: Request) {
         console.info(`[PlaybackResolver] [CACHE HIT] Candidate found in Supabase Storage: ${topVideoId}`);
         return NextResponse.json({ status: "ready", sourceUrl: supabaseCachedUrl, videoId: topVideoId });
       }
-    }
-
-    if (NEBULA_MUSIC_SERVER_URL) {
-      console.info(`[PlaybackResolver] Candidate serving via dedicated backend audio server: ${topVideoId}`);
-      return NextResponse.json({
-        status: "ready",
-        sourceUrl: `${NEBULA_MUSIC_SERVER_URL}/audio/${topVideoId}`,
-        videoId: topVideoId,
-      });
     }
 
     console.info(`[PlaybackResolver] Candidate serving via native streaming route: ${topVideoId}`);

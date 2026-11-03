@@ -9,7 +9,7 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { recordListeningHistory } from "@/lib/music/library";
 import { dbRecordListeningHistory } from "@/lib/storage/client-db";
-import { getCachedAudioBlobUrl } from "@/lib/storage/audio-cache";
+import { getCachedAudioBlobUrl, cacheAudioBlob } from "@/lib/storage/audio-cache";
 import type { Track } from "@/types/music";
 
 export type RepeatMode = "off" | "all" | "one";
@@ -143,6 +143,24 @@ function getAudioEngine() {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function backgroundCacheTrack(videoId: string, streamUrl: string) {
+  if (typeof window === "undefined" || !videoId || streamUrl.startsWith("blob:")) return;
+  try {
+    const existing = await getCachedAudioBlobUrl(videoId);
+    if (existing) return;
+
+    const res = await fetch(streamUrl);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    if (blob.size > 100_000) {
+      await cacheAudioBlob(videoId, blob, blob.type || "audio/mp4");
+      console.info(`[AudioCache] Background cached "${videoId}" into IndexedDB (${blob.size} bytes)`);
+    }
+  } catch {
+    // Non-critical background caching failure
+  }
 }
 
 async function resolveTrackSource(track: Track, bypassCache = false): Promise<string> {
@@ -408,6 +426,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
               setMediaSessionPlaybackState("playing");
               void recordHistory(track.id, { title: track.title, artist: track.artist, artwork: track.artwork, duration: track.duration });
+              const inferredVid = track.videoId || (track.id?.startsWith("youtube:") ? track.id.replace(/^youtube:/, "") : undefined) || (/^[A-Za-z0-9_-]{11}$/.test(track.id) ? track.id : undefined);
+              if (inferredVid && fallbackUrl) {
+                void backgroundCacheTrack(inferredVid, fallbackUrl);
+              }
               const { queue: q, queueIndex: qIdx } = get();
               if (q.length > 0 && qIdx + 1 < q.length) {
                 prefetchNextTrackSource(q[qIdx + 1]);
@@ -481,6 +503,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           set({ isPlaying: true, isLoading: false, isResolving: false, error: null });
           setMediaSessionPlaybackState("playing");
           void recordHistory(track.id, { title: track.title, artist: track.artist, artwork: track.artwork, duration: track.duration });
+          // Background cache track into IndexedDB for instant 0ms repeat playback
+          const inferredVid = track.videoId || (track.id?.startsWith("youtube:") ? track.id.replace(/^youtube:/, "") : undefined) || (/^[A-Za-z0-9_-]{11}$/.test(track.id) ? track.id : undefined);
+          if (inferredVid && sourceUrl) {
+            void backgroundCacheTrack(inferredVid, sourceUrl);
+          }
           // Pre-resolve next track as soon as current track starts playing
           const { queue: q, queueIndex: qIdx } = get();
           if (q.length > 0 && qIdx + 1 < q.length) {

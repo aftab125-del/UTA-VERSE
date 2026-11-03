@@ -36,24 +36,23 @@ export async function GET(
     return new NextResponse("Invalid videoId parameter", { status: 400 });
   }
 
-  // If dedicated backend server is available (e.g. production Vercel deployment), redirect directly
-  // This bypasses Vercel's 10-second serverless execution limits and YouTube's AWS IP blocking.
-  if (NEBULA_MUSIC_SERVER_URL) {
-    const redirectUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${cleanId}${bypassCache ? "?bypass=1" : ""}`;
-    return NextResponse.redirect(redirectUrl, 307);
-  }
-
   if (bypassCache) {
     streamCache.delete(cleanId);
   }
 
-  // 1. Get cached stream or resolve fresh
+  // 1. Get cached stream or resolve fresh via native InnerTube engine (Zero Northflank / Echo Music Architecture)
   let streamData = streamCache.get(cleanId);
   const now = Date.now();
 
   if (!streamData || now > streamData.expiresAt) {
     const resolved = await resolveInnerTubeAudioStream(cleanId);
     if (!resolved?.url) {
+      // Fallback to dedicated server if configured and native InnerTube resolution fails
+      if (NEBULA_MUSIC_SERVER_URL) {
+        console.warn(`[StreamProxy] Native InnerTube resolution failed for ${cleanId}, falling back to dedicated backend`);
+        const redirectUrl = `${NEBULA_MUSIC_SERVER_URL}/audio/${cleanId}${bypassCache ? "?bypass=1" : ""}`;
+        return NextResponse.redirect(redirectUrl, 307);
+      }
       console.error(`[StreamProxy] Failed to resolve InnerTube stream for ${cleanId}`);
       return new NextResponse("Audio stream could not be resolved", { status: 502 });
     }
