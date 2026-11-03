@@ -72,24 +72,42 @@ class Deck {
       );
     };
 
+    let waitingDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearWaitingTimer = () => {
+      if (waitingDebounceTimer) {
+        clearTimeout(waitingDebounceTimer);
+        waitingDebounceTimer = null;
+      }
+    };
+
     const onWaiting = () => {
-      callbacks.onLoading?.();
+      // Debounce loading notification by 350ms to absorb micro-stalls and buffer adjustments
+      clearWaitingTimer();
+      waitingDebounceTimer = setTimeout(() => {
+        waitingDebounceTimer = null;
+        callbacks.onLoading?.();
+      }, 350);
     };
 
     const onPlaying = () => {
+      clearWaitingTimer();
       this.recoveredNetworkError = false;
       callbacks.onPlaying?.();
     };
 
     const onPause = () => {
+      clearWaitingTimer();
       callbacks.onPaused?.();
     };
 
     const onEnded = () => {
+      clearWaitingTimer();
       callbacks.onEnded?.();
     };
 
     const onError = () => {
+      clearWaitingTimer();
       const code = this.element.error?.code ?? null;
       // Code 1 is MEDIA_ERR_ABORTED (user interrupted or replaced source). Ignore it.
       if (code === 1 || !this.element.src || !this.source) return;
@@ -130,6 +148,7 @@ class Deck {
     this.element.addEventListener("error", onError);
 
     this.cleanupListeners = () => {
+      clearWaitingTimer();
       this.element.removeEventListener("loadedmetadata", onLoadedMetadata);
       this.element.removeEventListener("canplay", onCanPlay);
       this.element.removeEventListener("timeupdate", onTimeUpdate);

@@ -108,8 +108,17 @@ app.get('/', (req, res) => {
 // Supabase Storage helpers
 // -----------------------------------------------------------------------------
 
+const inMemorySupabaseUrlCache = new Map();
+const SUPABASE_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 async function getSupabaseAudioUrl(videoId) {
   if (!supabase) return null;
+
+  const cached = inMemorySupabaseUrlCache.get(videoId);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.url;
+  }
+
   const fileName = `${videoId}.m4a`;
 
   try {
@@ -124,6 +133,7 @@ async function getSupabaseAudioUrl(videoId) {
         .from('playback_cache')
         .update({ last_played_at: new Date().toISOString() })
         .eq('video_id', videoId);
+      inMemorySupabaseUrlCache.set(videoId, { url: row.audio_url, expiresAt: Date.now() + SUPABASE_CACHE_TTL_MS });
       return row.audio_url;
     }
 
@@ -146,7 +156,18 @@ async function getSupabaseAudioUrl(videoId) {
       .from('audio-cache')
       .getPublicUrl(fileName);
 
-    return publicUrlData?.publicUrl || null;
+    const publicUrl = publicUrlData?.publicUrl || null;
+    if (publicUrl) {
+      inMemorySupabaseUrlCache.set(videoId, { url: publicUrl, expiresAt: Date.now() + SUPABASE_CACHE_TTL_MS });
+      // Backfill playback_cache table so future queries hit indexed SQL
+      void supabase.from('playback_cache').upsert({
+        video_id: videoId,
+        audio_url: publicUrl,
+        created_at: new Date().toISOString(),
+        last_played_at: new Date().toISOString(),
+      }, { onConflict: 'video_id' });
+    }
+    return publicUrl;
   } catch (error) {
     console.warn(`[Supabase Storage] Check failed for ${videoId}:`, error.message);
     return null;
@@ -181,6 +202,7 @@ async function uploadToSupabaseStorage(videoId, localFilePathOrBuffer) {
 
     const permanentUrl = publicUrlData?.publicUrl || null;
     if (permanentUrl) {
+      inMemorySupabaseUrlCache.set(videoId, { url: permanentUrl, expiresAt: Date.now() + SUPABASE_CACHE_TTL_MS });
       void supabase.from('playback_cache').upsert({
         video_id: videoId,
         audio_url: permanentUrl,
@@ -624,19 +646,20 @@ app.get('/audio/:videoId', async (req, res) => {
   try {
     // 0. Check Supabase Storage cache first
     const supabaseUrl = await getSupabaseAudioUrl(rawVideoId);
-    if (supabaseUrl) {
+    let streamUrl = supabaseUrl;
+
+    if (streamUrl) {
       console.log(`[AudioProxy] Serving directly from Supabase cache: ${rawVideoId}`);
-      return res.redirect(302, supabaseUrl);
-    }
+    } else {
+      streamUrl = typeof req.query.url === 'string' && req.query.url.startsWith('http')
+        ? req.query.url.trim()
+        : getCachedStreamUrl(rawVideoId);
 
-    let streamUrl = typeof req.query.url === 'string' && req.query.url.startsWith('http')
-      ? req.query.url.trim()
-      : getCachedStreamUrl(rawVideoId);
-
-    if (!streamUrl) {
-      console.log(`[AudioProxy] Cache miss for ${rawVideoId}, extracting fresh stream...`);
-      const result = await processAndCacheAudio(rawVideoId);
-      streamUrl = result?.url?.trim();
+      if (!streamUrl) {
+        console.log(`[AudioProxy] Cache miss for ${rawVideoId}, extracting fresh stream...`);
+        const result = await processAndCacheAudio(rawVideoId);
+        streamUrl = result?.url?.trim();
+      }
     }
 
     if (!streamUrl) {
@@ -655,6 +678,7 @@ app.get('/audio/:videoId', async (req, res) => {
     if (upstreamRes.status === 403) {
       console.warn(`[AudioProxy] Upstream 403 for ${rawVideoId}. Re-extracting fresh stream...`);
       inMemoryStreamCache.delete(rawVideoId);
+      inMemorySupabaseUrlCache.delete(rawVideoId);
       const fresh = await processAndCacheAudio(rawVideoId);
       if (fresh?.url) {
         streamUrl = fresh.url.trim();

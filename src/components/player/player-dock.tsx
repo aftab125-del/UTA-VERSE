@@ -31,7 +31,7 @@ export function PlayerDock() {
   const setRepeatMode = usePlayerStore((state) => state.setRepeatMode);
   const setShuffled = usePlayerStore((state) => state.setShuffled);
   const error = usePlayerStore((state) => state.error);
-  const isLoading = usePlayerStore((state) => state.isLoading);
+
   const isResolving = usePlayerStore((state) => state.isResolving);
   const setIsExpanded = usePlayerStore((state) => state.setIsExpanded);
 
@@ -119,9 +119,9 @@ export function PlayerDock() {
                   </strong>
                   <span
                     className={error ? "player-dock__error" : undefined}
-                    title={error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Ready")}
+                    title={error ?? currentTrack?.artist ?? (isResolving ? "Resolving audio source…" : "Ready")}
                   >
-                    {error ?? (isResolving ? "Resolving audio source…" : isLoading ? "Loading audio…" : currentTrack?.artist ?? "Ready")}
+                    {error ?? currentTrack?.artist ?? (isResolving ? "Resolving audio source…" : "Ready")}
                   </span>
                 </div>
               </div>
@@ -164,7 +164,7 @@ export function PlayerDock() {
                   type="button"
                   className="player-dock__play-button"
                   onClick={() => void togglePlayPause()}
-                  disabled={!hasTrack || isResolving || isLoading}
+                  disabled={!hasTrack || isResolving}
                   aria-label={isPlaying ? "Pause" : "Play"}
                 >
                   {isPlaying ? "Ⅱ" : "▶"}
@@ -202,7 +202,7 @@ export function PlayerDock() {
                       setScrubPosition(null);
                     }
                   }}
-                  disabled={!hasTrack || isResolving || isLoading || duration <= 0}
+                  disabled={!hasTrack || isResolving || duration <= 0}
                   aria-label="Track progress"
                 />
                 <span className="player-dock__time">{formatTime(duration)}</span>

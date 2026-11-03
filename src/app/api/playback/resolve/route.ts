@@ -219,7 +219,41 @@ async function checkSupabasePlaybackCache(videoId: string): Promise<string | nul
       return row.audio_url;
     }
 
-    // 2. Check storage bucket directly
+    // 2. Direct HTTP HEAD probe on public Supabase CDN URL (Zero-auth, bypasses RLS list restrictions)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
+    if (supabaseUrl) {
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${AUDIO_BUCKET}/${videoId}.m4a`;
+      try {
+        const headController = new AbortController();
+        const headTimeout = setTimeout(() => headController.abort(), 3000);
+        const headRes = await fetch(publicUrl, {
+          method: "HEAD",
+          cache: "no-store",
+          signal: headController.signal,
+        });
+        clearTimeout(headTimeout);
+
+        if (headRes.ok) {
+          const contentLength = parseInt(headRes.headers.get("content-length") || "0", 10);
+          if (contentLength > 100_000) {
+            // Found valid cached audio file! Backfill playback_cache table asynchronously
+            void supabase.from("playback_cache").upsert({
+              video_id: videoId,
+              audio_url: publicUrl,
+              file_size: contentLength,
+              created_at: new Date().toISOString(),
+              last_played_at: new Date().toISOString(),
+            }, { onConflict: "video_id" });
+
+            return publicUrl;
+          }
+        }
+      } catch {
+        // Network timeout or error; fall through to storage bucket list check
+      }
+    }
+
+    // 3. Fallback: Check storage bucket directly if service client allows
     const fileName = `${videoId}.m4a`;
     const { data: fileList } = await supabase.storage
       .from(AUDIO_BUCKET)
@@ -228,9 +262,18 @@ async function checkSupabasePlaybackCache(videoId: string): Promise<string | nul
     if (Array.isArray(fileList)) {
       const match = fileList.find((f) => f.name === fileName);
       const size = match?.metadata?.size ?? (match as unknown as { size?: number })?.size ?? 0;
-      if (match && size > 500_000) {
+      if (match && size > 100_000) {
         const publicUrl = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName).data.publicUrl;
-        return publicUrl;
+        if (publicUrl) {
+          void supabase.from("playback_cache").upsert({
+            video_id: videoId,
+            audio_url: publicUrl,
+            file_size: size,
+            created_at: new Date().toISOString(),
+            last_played_at: new Date().toISOString(),
+          }, { onConflict: "video_id" });
+          return publicUrl;
+        }
       }
     }
   } catch (cacheErr) {
